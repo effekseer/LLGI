@@ -71,6 +71,7 @@ sudo apt-get install -y \
 | `BUILD_TEST` | `OFF` | Build `LLGI_Test` |
 | `BUILD_EXAMPLE` | `OFF` | Build sample applications |
 | `BUILD_TOOL` | `OFF` | Build `ShaderTranspiler` |
+| `BUILD_WEBGPU` | `OFF` | Enable the WebGPU backend and Dawn-based tooling |
 | `BUILD_VULKAN` | `OFF` (`ON` on Linux) | Enable the Vulkan backend |
 | `BUILD_VULKAN_COMPILER` | `OFF` | Enable Vulkan shader compilation support in `LLGI::CreateCompiler` |
 | `USE_CREATE_COMPILER_FUNCTION` | `ON` | Keep `LLGI::CreateCompiler` enabled |
@@ -138,6 +139,30 @@ cmake --build build
 
 On Linux, `BUILD_VULKAN` is enabled automatically by the top-level
 `CMakeLists.txt`.
+
+### WebGPU (experimental)
+
+When `BUILD_WEBGPU=ON`, LLGI links against Dawn from `thirdparty/dawn`.
+Install `depot_tools`, then fetch Dawn before configuring:
+
+```bash
+cd thirdparty
+git clone https://dawn.googlesource.com/dawn dawn
+cd dawn
+cp scripts/standalone.gclient .gclient
+gclient sync
+```
+
+Example configuration:
+
+```bash
+cmake -S . -B build \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DBUILD_TEST=ON \
+  -DBUILD_TOOL=ON \
+  -DBUILD_WEBGPU=ON
+cmake --build build
+```
 
 ## Install
 
