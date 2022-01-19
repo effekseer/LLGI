@@ -32,6 +32,7 @@ frags = glob.glob(os.path.join(target_directory, 'HLSL_DX12/*.frag'), recursive=
 comps = glob.glob(os.path.join(target_directory, 'HLSL_DX12/*.comp'), recursive=True)
 
 for target,directory,ext in [
+    ('-W', 'WebGPU', []),
     ('-M', 'Metal', []),
     ('-V', 'GLSL_VULKAN', []),
     ('-G', 'GLSL_GL',[]),
