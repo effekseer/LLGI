@@ -295,10 +295,11 @@ void test_depth_stencil(LLGI::DeviceType deviceType, DepthStencilTestMode mode)
 		}
 	}
 
+	commandList->WaitUntilCompleted();
+	graphics->WaitFinish();
+
 	pips.clear();
 	screenPips.clear();
-
-	graphics->WaitFinish();
 }
 
 TestRegister DepthStencil_Depth("DepthStencil.Depth",
