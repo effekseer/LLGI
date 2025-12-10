@@ -157,6 +157,12 @@ void test_simple_rectangle(LLGI::DeviceType deviceType, SingleRectangleTestMode 
 		}
 	}
 
+	for (int i = 0; i < 3; i++)
+	{
+		auto commandList = commandListPool->Get();
+		commandList->WaitUntilCompleted();
+	}
+
 	pips.clear();
 
 	graphics->WaitFinish();
@@ -261,6 +267,12 @@ void test_index_offset(LLGI::DeviceType deviceType)
 				.Save("SimpleRender.IndexOffset_" + TestHelper::GetDeviceName(deviceType) + ".png");
 			break;
 		}
+	}
+
+	for (size_t i = 0; i < commandLists.size(); i++)
+	{
+		auto commandList = commandLists[i];
+		commandList->WaitUntilCompleted();
 	}
 
 	pips.clear();
@@ -551,9 +563,14 @@ void main()
 		}
 	}
 
-	pips.clear();
-
+	for (int i = 0; i < commandLists.size(); i++)
+	{
+		auto commandList = commandLists[i];
+		commandList->WaitUntilCompleted();
+	}
 	graphics->WaitFinish();
+
+	pips.clear();
 
 	LLGI::SafeRelease(sfMemoryPool);
 	LLGI::SafeRelease(cb_vs);
@@ -816,9 +833,14 @@ void main()
 		}
 	}
 
-	pips.clear();
-
+	for (size_t i = 0; i < commandLists.size(); i++)
+	{
+		auto commandList = commandLists[i];
+		commandList->WaitUntilCompleted();
+	}
 	graphics->WaitFinish();
+
+	pips.clear();
 
 	LLGI::SafeRelease(sfMemoryPool);
 	LLGI::SafeRelease(textureDrawn);
@@ -943,6 +965,12 @@ void test_instancing(LLGI::DeviceType deviceType)
 		}
 	}
 
+	for (int i = 0; i < 3; i++)
+	{
+		auto commandList = commandListPool->Get();
+		commandList->WaitUntilCompleted();
+	}
+	graphics->WaitFinish();
 	pips.clear();
 }
 
@@ -1058,6 +1086,12 @@ void test_vtf(LLGI::DeviceType deviceType)
 		}
 	}
 
+	for (int i = 0; i < 3; i++)
+	{
+		auto commandList = commandListPool->Get();
+		commandList->WaitUntilCompleted();
+	}
+	graphics->WaitFinish();
 	pips.clear();
 }
 

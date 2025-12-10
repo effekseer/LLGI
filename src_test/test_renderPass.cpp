@@ -296,9 +296,13 @@ void test_renderPass(LLGI::DeviceType deviceType, RenderPassTestMode mode)
 		}
 	}
 
-	pips.clear();
-
+	for (size_t i = 0; i < commandLists.size(); i++)
+	{
+		commandLists[i]->WaitUntilCompleted();
+	}
 	graphics->WaitFinish();
+
+	pips.clear();
 
 	LLGI::SafeRelease(sfMemoryPool);
 	LLGI::SafeRelease(renderTexture);
@@ -308,7 +312,9 @@ void test_renderPass(LLGI::DeviceType deviceType, RenderPassTestMode mode)
 	LLGI::SafeRelease(renderPass);
 	LLGI::SafeRelease(texture);
 	for (size_t i = 0; i < commandLists.size(); i++)
+	{
 		LLGI::SafeRelease(commandLists[i]);
+	}
 	LLGI::SafeRelease(graphics);
 	LLGI::SafeRelease(platform);
 }
@@ -391,6 +397,10 @@ void test_copyTextureToScreen(LLGI::DeviceType deviceType)
 		}
 	}
 
+	for (size_t i = 0; i < commandLists.size(); i++)
+	{
+		commandLists[i]->WaitUntilCompleted();
+	}
 	graphics->WaitFinish();
 
 	LLGI::SafeRelease(sfMemoryPool);
@@ -599,9 +609,13 @@ void test_multiRenderPass(LLGI::DeviceType deviceType)
 		}
 	}
 
-	pips.clear();
-
+	for (size_t i = 0; i < commandLists.size(); i++)
+	{
+		commandLists[i]->WaitUntilCompleted();
+	}
 	graphics->WaitFinish();
+
+	pips.clear();
 
 	LLGI::SafeRelease(sfMemoryPool);
 	LLGI::SafeRelease(renderTexture1);
@@ -609,7 +623,9 @@ void test_multiRenderPass(LLGI::DeviceType deviceType)
 	LLGI::SafeRelease(renderPass);
 	LLGI::SafeRelease(texture);
 	for (size_t i = 0; i < commandLists.size(); i++)
+	{
 		LLGI::SafeRelease(commandLists[i]);
+	}
 
 	LLGI::SafeRelease(compiler);
 }
