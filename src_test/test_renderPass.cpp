@@ -1,6 +1,6 @@
 #include "TestHelper.h"
 #include "test.h"
-#include <array>
+#include <Utils/LLGI.CommandListPool.h>
 #include <map>
 
 enum class RenderPassTestMode
@@ -33,9 +33,7 @@ void test_renderPass(LLGI::DeviceType deviceType, RenderPassTestMode mode)
 	auto graphics = platform->CreateGraphics();
 	auto sfMemoryPool = graphics->CreateSingleFrameMemoryPool(1024 * 1024, 128);
 
-	std::array<LLGI::CommandList*, 3> commandLists;
-	for (size_t i = 0; i < commandLists.size(); i++)
-		commandLists[i] = graphics->CreateCommandList(sfMemoryPool);
+	auto commandListPool = std::make_shared<LLGI::CommandListPool>(graphics, sfMemoryPool, 3);
 
 	LLGI::RenderTextureInitializationParameter params;
 	params.Size = LLGI::Vec2I(256, 256);
@@ -173,7 +171,7 @@ void test_renderPass(LLGI::DeviceType deviceType, RenderPassTestMode mode)
 		color2.B = 0;
 		color2.A = 255;
 
-		auto commandList = commandLists[count % commandLists.size()];
+		auto commandList = commandListPool->Get();
 		commandList->Begin();
 
 		commandList->BeginRenderPass(renderPass);
@@ -264,7 +262,7 @@ void test_renderPass(LLGI::DeviceType deviceType, RenderPassTestMode mode)
 
 		if (TestHelper::GetIsCaptureRequired() && count == 30)
 		{
-			commandList->WaitUntilCompleted();
+			commandListPool->WaitUntilCompleted();
 			auto screenTex = platform->GetCurrentScreen(LLGI::Color8(), true)->GetRenderTexture(0);
 			auto data = graphics->CaptureRenderTarget(screenTex);
 
@@ -293,10 +291,7 @@ void test_renderPass(LLGI::DeviceType deviceType, RenderPassTestMode mode)
 		}
 	}
 
-	for (size_t i = 0; i < commandLists.size(); i++)
-	{
-		commandLists[i]->WaitUntilCompleted();
-	}
+	commandListPool->WaitUntilCompleted();
 	graphics->WaitFinish();
 
 	pips.clear();
@@ -308,10 +303,6 @@ void test_renderPass(LLGI::DeviceType deviceType, RenderPassTestMode mode)
 	LLGI::SafeRelease(depthTextureDst);
 	LLGI::SafeRelease(renderPass);
 	LLGI::SafeRelease(texture);
-	for (size_t i = 0; i < commandLists.size(); i++)
-	{
-		LLGI::SafeRelease(commandLists[i]);
-	}
 	LLGI::SafeRelease(graphics);
 	LLGI::SafeRelease(platform);
 }
@@ -332,9 +323,7 @@ void test_copyTextureToScreen(LLGI::DeviceType deviceType)
 	auto graphics = platform->CreateGraphics();
 	auto sfMemoryPool = graphics->CreateSingleFrameMemoryPool(1024 * 1024, 128);
 
-	std::array<LLGI::CommandList*, 3> commandLists;
-	for (size_t i = 0; i < commandLists.size(); i++)
-		commandLists[i] = graphics->CreateCommandList(sfMemoryPool);
+	auto commandListPool = std::make_shared<LLGI::CommandListPool>(graphics, sfMemoryPool, 3);
 
 	LLGI::RenderTextureInitializationParameter params;
 	params.Size = LLGI::Vec2I(1280, 720);
@@ -369,7 +358,7 @@ void test_copyTextureToScreen(LLGI::DeviceType deviceType)
 		color2.B = 0;
 		color2.A = 255;
 
-		auto commandList = commandLists[count % commandLists.size()];
+		auto commandList = commandListPool->Get();
 		commandList->Begin();
 		commandList->BeginRenderPass(renderPass);
 		commandList->EndRenderPass();
@@ -385,7 +374,7 @@ void test_copyTextureToScreen(LLGI::DeviceType deviceType)
 
 		if (TestHelper::GetIsCaptureRequired() && count == 30)
 		{
-			commandList->WaitUntilCompleted();
+			commandListPool->WaitUntilCompleted();
 			auto texture = platform->GetCurrentScreen(LLGI::Color8(), true)->GetRenderTexture(0);
 			auto data = graphics->CaptureRenderTarget(texture);
 
@@ -394,17 +383,12 @@ void test_copyTextureToScreen(LLGI::DeviceType deviceType)
 		}
 	}
 
-	for (size_t i = 0; i < commandLists.size(); i++)
-	{
-		commandLists[i]->WaitUntilCompleted();
-	}
+	commandListPool->WaitUntilCompleted();
 	graphics->WaitFinish();
 
 	LLGI::SafeRelease(sfMemoryPool);
 	LLGI::SafeRelease(renderTexture);
 	LLGI::SafeRelease(renderPass);
-	for (size_t i = 0; i < commandLists.size(); i++)
-		LLGI::SafeRelease(commandLists[i]);
 	LLGI::SafeRelease(graphics);
 	LLGI::SafeRelease(platform);
 }
@@ -424,9 +408,7 @@ void test_multiRenderPass(LLGI::DeviceType deviceType)
 	auto graphics = LLGI::CreateSharedPtr(platform->CreateGraphics());
 	auto sfMemoryPool = graphics->CreateSingleFrameMemoryPool(1024 * 1024, 128);
 
-	std::array<LLGI::CommandList*, 3> commandLists;
-	for (size_t i = 0; i < commandLists.size(); i++)
-		commandLists[i] = graphics->CreateCommandList(sfMemoryPool);
+	auto commandListPool = std::make_shared<LLGI::CommandListPool>(graphics.get(), sfMemoryPool, 3);
 
 	LLGI::TextureInitializationParameter texParam;
 	texParam.Size = LLGI::Vec2I(256, 256);
@@ -512,7 +494,7 @@ void test_multiRenderPass(LLGI::DeviceType deviceType)
 		color2.B = 0;
 		color2.A = 255;
 
-		auto commandList = commandLists[count % commandLists.size()];
+		auto commandList = commandListPool->Get();
 		commandList->Begin();
 
 		commandList->BeginRenderPass(renderPass);
@@ -595,7 +577,7 @@ void test_multiRenderPass(LLGI::DeviceType deviceType)
 
 		if (TestHelper::GetIsCaptureRequired() && count == 30)
 		{
-			commandList->WaitUntilCompleted();
+			commandListPool->WaitUntilCompleted();
 			auto screenTexture = platform->GetCurrentScreen(LLGI::Color8(), true)->GetRenderTexture(0);
 			auto data = graphics->CaptureRenderTarget(screenTexture);
 			Bitmap2D(data, screenTexture->GetSizeAs2D().X, screenTexture->GetSizeAs2D().Y, screenTexture->GetFormat())
@@ -603,10 +585,7 @@ void test_multiRenderPass(LLGI::DeviceType deviceType)
 		}
 	}
 
-	for (size_t i = 0; i < commandLists.size(); i++)
-	{
-		commandLists[i]->WaitUntilCompleted();
-	}
+	commandListPool->WaitUntilCompleted();
 	graphics->WaitFinish();
 
 	pips.clear();
@@ -616,10 +595,6 @@ void test_multiRenderPass(LLGI::DeviceType deviceType)
 	LLGI::SafeRelease(renderTexture2);
 	LLGI::SafeRelease(renderPass);
 	LLGI::SafeRelease(texture);
-	for (size_t i = 0; i < commandLists.size(); i++)
-	{
-		LLGI::SafeRelease(commandLists[i]);
-	}
 
 	LLGI::SafeRelease(compiler);
 }

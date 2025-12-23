@@ -39,11 +39,19 @@ public:
 		SafeRelease(graphics_);
 	}
 
+	void WaitUntilCompleted()
+	{
+		for (auto commandList : commandLists_)
+		{
+			commandList->WaitUntilCompleted();
+		}
+	}
+
 	CommandList* Get(bool addRef = false)
 	{
 		CommandList* commandList = nullptr;
 
-		commandLists_[current_]->WaitUntilCompleted();
+		WaitUntilCompleted();
 
 		commandList = commandLists_[current_];
 

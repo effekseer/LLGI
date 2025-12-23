@@ -3,7 +3,6 @@
 #include "test.h"
 
 #include <Utils/LLGI.CommandListPool.h>
-#include <array>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -23,9 +22,7 @@ void test_textures(LLGI::DeviceType deviceType)
 	auto graphics = platform->CreateGraphics();
 	auto sfMemoryPool = graphics->CreateSingleFrameMemoryPool(1024 * 1024, 128);
 
-	std::array<LLGI::CommandList*, 3> commandLists;
-	for (size_t i = 0; i < commandLists.size(); i++)
-		commandLists[i] = graphics->CreateCommandList(sfMemoryPool);
+	auto commandListPool = std::make_shared<LLGI::CommandListPool>(graphics, sfMemoryPool, 3);
 
 	// Create textures
 	LLGI::TextureInitializationParameter texParamSrc1;
@@ -196,7 +193,7 @@ void test_textures(LLGI::DeviceType deviceType)
 			pips[renderPassPipelineState] = LLGI::CreateSharedPtr(pip);
 		}
 
-		auto commandList = commandLists[count % commandLists.size()];
+		auto commandList = commandListPool->Get();
 		commandList->Begin();
 
 		commandList->CopyTexture(texSrc1.get(), texDst1.get(), {0, 0, 0}, {0, 0, 0}, {1, 1, 1}, 0, 0);
@@ -221,7 +218,7 @@ void test_textures(LLGI::DeviceType deviceType)
 
 		if (TestHelper::GetIsCaptureRequired() && count == 30)
 		{
-			commandList->WaitUntilCompleted();
+			commandListPool->WaitUntilCompleted();
 
 			auto textureMipmap = platform->GetCurrentScreen(LLGI::Color8(), true)->GetRenderTexture(0);
 			auto data = graphics->CaptureRenderTarget(textureMipmap);
@@ -237,8 +234,6 @@ void test_textures(LLGI::DeviceType deviceType)
 	LLGI::SafeRelease(sfMemoryPool);
 	LLGI::SafeRelease(shader_vs);
 	LLGI::SafeRelease(shader_ps);
-	for (size_t i = 0; i < commandLists.size(); i++)
-		LLGI::SafeRelease(commandLists[i]);
 	LLGI::SafeRelease(graphics);
 	LLGI::SafeRelease(platform);
 

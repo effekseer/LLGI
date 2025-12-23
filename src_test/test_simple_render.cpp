@@ -134,7 +134,7 @@ void test_simple_rectangle(LLGI::DeviceType deviceType, SingleRectangleTestMode 
 
 		if (TestHelper::GetIsCaptureRequired() && count == 30)
 		{
-			commandList->WaitUntilCompleted();
+			commandListPool->WaitUntilCompleted();
 			auto texture = platform->GetCurrentScreen(LLGI::Color8(), true)->GetRenderTexture(0);
 			auto data = graphics->CaptureRenderTarget(texture);
 
@@ -157,11 +157,7 @@ void test_simple_rectangle(LLGI::DeviceType deviceType, SingleRectangleTestMode 
 		}
 	}
 
-	for (int i = 0; i < 3; i++)
-	{
-		auto commandList = commandListPool->Get();
-		commandList->WaitUntilCompleted();
-	}
+	commandListPool->WaitUntilCompleted();
 
 	pips.clear();
 
@@ -187,9 +183,7 @@ void test_index_offset(LLGI::DeviceType deviceType)
 
 	auto sfMemoryPool = graphics->CreateSingleFrameMemoryPool(1024 * 1024, 128);
 
-	std::array<LLGI::CommandList*, 3> commandLists;
-	for (size_t i = 0; i < commandLists.size(); i++)
-		commandLists[i] = graphics->CreateCommandList(sfMemoryPool);
+	auto commandListPool = std::make_shared<LLGI::CommandListPool>(graphics, sfMemoryPool, 3);
 
 	std::shared_ptr<LLGI::Shader> shader_vs = nullptr;
 	std::shared_ptr<LLGI::Shader> shader_ps = nullptr;
@@ -243,7 +237,7 @@ void test_index_offset(LLGI::DeviceType deviceType)
 			pips[renderPassPipelineState] = LLGI::CreateSharedPtr(pip);
 		}
 
-		auto commandList = commandLists[count % commandLists.size()];
+		auto commandList = commandListPool->Get();
 		commandList->Begin();
 		commandList->BeginRenderPass(renderPass);
 		commandList->SetVertexBuffer(vb.get(), sizeof(SimpleVertex), 0);
@@ -260,7 +254,7 @@ void test_index_offset(LLGI::DeviceType deviceType)
 
 		if (TestHelper::GetIsCaptureRequired() && count == 30)
 		{
-			commandList->WaitUntilCompleted();
+			commandListPool->WaitUntilCompleted();
 			auto texture = platform->GetCurrentScreen(LLGI::Color8(), true)->GetRenderTexture(0);
 			auto data = graphics->CaptureRenderTarget(texture);
 			Bitmap2D(data, texture->GetSizeAs2D().X, texture->GetSizeAs2D().Y, texture->GetFormat())
@@ -269,19 +263,13 @@ void test_index_offset(LLGI::DeviceType deviceType)
 		}
 	}
 
-	for (size_t i = 0; i < commandLists.size(); i++)
-	{
-		auto commandList = commandLists[i];
-		commandList->WaitUntilCompleted();
-	}
+	commandListPool->WaitUntilCompleted();
 
 	pips.clear();
 
 	graphics->WaitFinish();
 
 	LLGI::SafeRelease(sfMemoryPool);
-	for (size_t i = 0; i < commandLists.size(); i++)
-		LLGI::SafeRelease(commandLists[i]);
 	LLGI::SafeRelease(graphics);
 	LLGI::SafeRelease(platform);
 }
@@ -354,9 +342,7 @@ void main()
 	auto graphics = platform->CreateGraphics();
 	auto sfMemoryPool = graphics->CreateSingleFrameMemoryPool(1024 * 1024, 128);
 
-	std::array<LLGI::CommandList*, 3> commandLists;
-	for (size_t i = 0; i < commandLists.size(); i++)
-		commandLists[i] = graphics->CreateCommandList(sfMemoryPool);
+	auto commandListPool = std::make_shared<LLGI::CommandListPool>(graphics, sfMemoryPool, 3);
 
 	LLGI::Buffer* cb_vs = nullptr;
 	LLGI::Buffer* cb_ps = nullptr;
@@ -517,7 +503,7 @@ void main()
 			pips[renderPassPipelineState] = LLGI::CreateSharedPtr(pip);
 		}
 
-		auto commandList = commandLists[count % commandLists.size()];
+		auto commandList = commandListPool->Get();
 		commandList->Begin();
 
 		commandList->BeginRenderPass(renderPass);
@@ -544,7 +530,7 @@ void main()
 
 		if (TestHelper::GetIsCaptureRequired() && count == 30)
 		{
-			commandList->WaitUntilCompleted();
+			commandListPool->WaitUntilCompleted();
 			auto texture = platform->GetCurrentScreen(LLGI::Color8(), true)->GetRenderTexture(0);
 			auto data = graphics->CaptureRenderTarget(texture);
 
@@ -563,11 +549,7 @@ void main()
 		}
 	}
 
-	for (int i = 0; i < commandLists.size(); i++)
-	{
-		auto commandList = commandLists[i];
-		commandList->WaitUntilCompleted();
-	}
+	commandListPool->WaitUntilCompleted();
 	graphics->WaitFinish();
 
 	pips.clear();
@@ -577,8 +559,6 @@ void main()
 	LLGI::SafeRelease(cb_ps);
 	LLGI::SafeRelease(shader_vs);
 	LLGI::SafeRelease(shader_ps);
-	for (size_t i = 0; i < commandLists.size(); i++)
-		LLGI::SafeRelease(commandLists[i]);
 	LLGI::SafeRelease(graphics);
 	LLGI::SafeRelease(platform);
 
@@ -644,9 +624,7 @@ void main()
 	auto graphics = platform->CreateGraphics();
 	auto sfMemoryPool = graphics->CreateSingleFrameMemoryPool(1024 * 1024, 128);
 
-	std::array<LLGI::CommandList*, 3> commandLists;
-	for (size_t i = 0; i < commandLists.size(); i++)
-		commandLists[i] = graphics->CreateCommandList(sfMemoryPool);
+	auto commandListPool = std::make_shared<LLGI::CommandListPool>(graphics, sfMemoryPool, 3);
 
 	LLGI::TextureInitializationParameter texParam;
 
@@ -788,7 +766,7 @@ void main()
 			pips[renderPassPipelineState] = LLGI::CreateSharedPtr(pip);
 		}
 
-		auto commandList = commandLists[count % commandLists.size()];
+		auto commandList = commandListPool->Get();
 		commandList->Begin();
 		commandList->BeginRenderPass(renderPass);
 		// commandList->SetConstantBuffer(dummy_cb.get(), LLGI::ShaderStageType::Vertex);
@@ -807,7 +785,7 @@ void main()
 
 		if (TestHelper::GetIsCaptureRequired() && count == 30)
 		{
-			commandList->WaitUntilCompleted();
+			commandListPool->WaitUntilCompleted();
 			auto texture = platform->GetCurrentScreen(LLGI::Color8(), true)->GetRenderTexture(0);
 			auto data = graphics->CaptureRenderTarget(texture);
 
@@ -832,11 +810,7 @@ void main()
 		}
 	}
 
-	for (size_t i = 0; i < commandLists.size(); i++)
-	{
-		auto commandList = commandLists[i];
-		commandList->WaitUntilCompleted();
-	}
+	commandListPool->WaitUntilCompleted();
 	graphics->WaitFinish();
 
 	pips.clear();
@@ -845,8 +819,6 @@ void main()
 	LLGI::SafeRelease(textureDrawn);
 	LLGI::SafeRelease(shader_vs);
 	LLGI::SafeRelease(shader_ps);
-	for (size_t i = 0; i < commandLists.size(); i++)
-		LLGI::SafeRelease(commandLists[i]);
 	LLGI::SafeRelease(graphics);
 	LLGI::SafeRelease(platform);
 
@@ -954,7 +926,7 @@ void test_instancing(LLGI::DeviceType deviceType)
 
 		if (TestHelper::GetIsCaptureRequired() && count == 30)
 		{
-			commandList->WaitUntilCompleted();
+			commandListPool->WaitUntilCompleted();
 			auto texture = platform->GetCurrentScreen(LLGI::Color8(), true)->GetRenderTexture(0);
 			auto data = graphics->CaptureRenderTarget(texture);
 
@@ -964,11 +936,7 @@ void test_instancing(LLGI::DeviceType deviceType)
 		}
 	}
 
-	for (int i = 0; i < 3; i++)
-	{
-		auto commandList = commandListPool->Get();
-		commandList->WaitUntilCompleted();
-	}
+	commandListPool->WaitUntilCompleted();
 	graphics->WaitFinish();
 	pips.clear();
 }
@@ -1092,7 +1060,7 @@ void test_vertex_structured(LLGI::DeviceType deviceType)
 
 		if (TestHelper::GetIsCaptureRequired() && count == 30)
 		{
-			commandList->WaitUntilCompleted();
+			commandListPool->WaitUntilCompleted();
 			auto texture = platform->GetCurrentScreen(LLGI::Color8(), true)->GetRenderTexture(0);
 			auto data = graphics->CaptureRenderTarget(texture);
 
@@ -1206,7 +1174,7 @@ void test_vtf(LLGI::DeviceType deviceType)
 
 		if (TestHelper::GetIsCaptureRequired() && count == 30)
 		{
-			commandList->WaitUntilCompleted();
+			commandListPool->WaitUntilCompleted();
 			auto texture = platform->GetCurrentScreen(LLGI::Color8(), true)->GetRenderTexture(0);
 			auto data = graphics->CaptureRenderTarget(texture);
 
@@ -1216,11 +1184,7 @@ void test_vtf(LLGI::DeviceType deviceType)
 		}
 	}
 
-	for (int i = 0; i < 3; i++)
-	{
-		auto commandList = commandListPool->Get();
-		commandList->WaitUntilCompleted();
-	}
+	commandListPool->WaitUntilCompleted();
 	graphics->WaitFinish();
 	pips.clear();
 }

@@ -175,7 +175,7 @@ void test_capture(LLGI::DeviceType deviceType, LLGI::Vec2I windowSize)
 
 		if (TestHelper::GetIsCaptureRequired() && count == 30)
 		{
-			commandList->WaitUntilCompleted();
+			commandListPool->WaitUntilCompleted();
 			auto texture = platform->GetCurrentScreen(LLGI::Color8(), true)->GetRenderTexture(0);
 			auto data = graphics->CaptureRenderTarget(texture);
 
