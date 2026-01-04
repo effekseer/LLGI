@@ -4,10 +4,10 @@
 #include "LLGI.CommandListDX12.h"
 #include "LLGI.PipelineStateDX12.h"
 #include "LLGI.PlatformDX12.h"
+#include "LLGI.QueryDX12.h"
 #include "LLGI.ShaderDX12.h"
 #include "LLGI.SingleFrameMemoryPoolDX12.h"
 #include "LLGI.TextureDX12.h"
-#include "LLGI.QueryDX12.h"
 
 namespace LLGI
 {
@@ -310,6 +310,12 @@ std::vector<uint8_t> GraphicsDX12::CaptureRenderTarget(Texture* renderTarget)
 
 	auto dstFootprint = texture->GetFootprint().Footprint;
 
+	ID3D12CommandAllocator* commandAllocator = nullptr;
+	ID3D12GraphicsCommandList* commandList = nullptr;
+	D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
+	UINT64 totalSize{};
+	D3D12_RESOURCE_DESC textureDesc{};
+
 	BufferDX12 dstBuffer;
 	if (!dstBuffer.Initialize(this, BufferUsageType::CopyDst | BufferUsageType::MapRead, dstFootprint.RowPitch * dstFootprint.Height))
 	{
@@ -317,8 +323,6 @@ std::vector<uint8_t> GraphicsDX12::CaptureRenderTarget(Texture* renderTarget)
 		::LLGI::Log(::LLGI::LogType::Error, msg.c_str());
 		goto FAILED_EXIT;
 	}
-	ID3D12CommandAllocator* commandAllocator = nullptr;
-	ID3D12GraphicsCommandList* commandList = nullptr;
 
 	auto hr = device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&commandAllocator));
 	if (FAILED(hr))
@@ -339,9 +343,7 @@ std::vector<uint8_t> GraphicsDX12::CaptureRenderTarget(Texture* renderTarget)
 		goto FAILED_EXIT;
 	}
 
-	D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint;
-	UINT64 totalSize;
-	auto textureDesc = texture->Get()->GetDesc();
+	textureDesc = texture->Get()->GetDesc();
 	device->GetCopyableFootprints(&textureDesc, 0, 1, 0, &footprint, nullptr, nullptr, &totalSize);
 
 	src.pResource = texture->Get();
@@ -408,9 +410,6 @@ Query* GraphicsDX12::CreateQuery(QueryType queryType, int32_t queryCount)
 	return obj;
 }
 
-uint64_t GraphicsDX12::TimestampToMicroseconds(uint64_t timestamp) const
-{
-	return timestamp * 1000000 / timestampFrequency_;
-}
+uint64_t GraphicsDX12::TimestampToMicroseconds(uint64_t timestamp) const { return timestamp * 1000000 / timestampFrequency_; }
 
 } // namespace LLGI

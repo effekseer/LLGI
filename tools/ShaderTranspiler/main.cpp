@@ -113,14 +113,14 @@ int main(int argc, char* argv[])
 		{
 			if (i == args.size() - 1)
 			{
-				std::cout << "Invald input" << std::endl;
+				std::cout << "Invald input : arg is none" << std::endl;
 				return 0;
 			}
 
 			std::ifstream ifs(args[i + 1]);
 			if (ifs.fail())
 			{
-				std::cout << "Invald input" << std::endl;
+				std::cout << "Invald input : unknown file " << args[i + 1] << std::endl;
 				return 0;
 			}
 			code = std::string((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
@@ -131,7 +131,7 @@ int main(int argc, char* argv[])
 		{
 			if (i == args.size() - 1)
 			{
-				std::cout << "Invald output" << std::endl;
+				std::cout << "Invald output : arg is none" << std::endl;
 				return 0;
 			}
 
@@ -180,7 +180,8 @@ int main(int argc, char* argv[])
 
 	auto generator = std::make_shared<LLGI::SPIRVGenerator>(loadFunc);
 
-	auto spirv = generator->Generate(inputPath.c_str(), code.c_str(), includeDir, macros, shaderStage, outputType == OutputType::VULKAN_GLSL);
+	auto spirv =
+		generator->Generate(inputPath.c_str(), code.c_str(), includeDir, macros, shaderStage, outputType == OutputType::VULKAN_GLSL);
 
 	if (spirv->GetData().size() == 0)
 	{
