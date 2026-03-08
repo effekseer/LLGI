@@ -200,12 +200,31 @@ std::vector<uint8_t> Shader::LoadData(const char* path)
 		return ret;
 	}
 
-	fseek(fp, 0, SEEK_END);
-	auto size = ftell(fp);
-	fseek(fp, 0, SEEK_SET);
+	if (fseek(fp, 0, SEEK_END) != 0)
+	{
+		fclose(fp);
+		return ret;
+	}
 
-	ret.resize(size);
-	fread(ret.data(), 1, size, fp);
+	const auto size = ftell(fp);
+	if (size <= 0)
+	{
+		fclose(fp);
+		return ret;
+	}
+
+	if (fseek(fp, 0, SEEK_SET) != 0)
+	{
+		fclose(fp);
+		return ret;
+	}
+
+	ret.resize(static_cast<size_t>(size));
+	const auto readSize = fread(ret.data(), 1, ret.size(), fp);
+	if (readSize != ret.size())
+	{
+		ret.resize(readSize);
+	}
 	fclose(fp);
 
 	return ret;
