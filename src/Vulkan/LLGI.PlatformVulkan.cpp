@@ -76,10 +76,13 @@ bool PlatformVulkan::CreateSwapChain(Vec2I windowSize, bool waitVSync)
 	{
 		disposeOldSwapchain();
 		swapchain_ = nullptr;
+		swapchainSize_ = {0, 0};
 		frameIndex = 0;
 	}
 	else
 	{
+		swapchainSize_ = {static_cast<int32_t>(swapchainExtent.width), static_cast<int32_t>(swapchainExtent.height)};
+
 		// select sync or vsync
 		vk::PresentModeKHR swapchainPresentMode = vk::PresentModeKHR::eFifo;
 		if (!waitVSync)
@@ -158,7 +161,7 @@ bool PlatformVulkan::CreateSwapChain(Vec2I windowSize, bool waitVSync)
 			swapBuffers[i].fence = vk::Fence();
 
 			swapBuffers[i].texture = new TextureVulkan();
-			if (!swapBuffers[i].texture->InitializeAsScreen(swapBuffers[i].image, swapBuffers[i].view, surfaceFormat, windowSize))
+			if (!swapBuffers[i].texture->InitializeAsScreen(swapBuffers[i].image, swapBuffers[i].view, surfaceFormat, swapchainSize_))
 			{
 				Log(LogType::Error, "failed to create a texture while creating swap buffers.");
 				throw "failed to create a texture while creating swap buffers.";
@@ -196,6 +199,30 @@ bool PlatformVulkan::CreateDepthBuffer(Vec2I windowSize)
 	return false;
 }
 
+bool PlatformVulkan::RecreateSwapchain(const Vec2I& windowSize)
+{
+	if (!CreateSwapChain(windowSize, waitVSync_))
+	{
+		return false;
+	}
+
+	renderPasses_.clear();
+
+	if (!IsSwapchainValid())
+	{
+		SafeRelease(depthStencilTexture_);
+		return true;
+	}
+
+	if (!CreateDepthBuffer(swapchainSize_))
+	{
+		return false;
+	}
+
+	CreateRenderPass();
+	return true;
+}
+
 void PlatformVulkan::CreateRenderPass()
 {
 	renderPasses_.clear();
@@ -212,13 +239,16 @@ void PlatformVulkan::CreateRenderPass()
 	}
 }
 
-uint32_t PlatformVulkan::AcquireNextImage(vk::Semaphore& semaphore)
+vk::Result PlatformVulkan::AcquireNextImage(vk::Semaphore& semaphore)
 {
 	auto resultValue = vkDevice_.acquireNextImageKHR(swapchain_, UINT64_MAX, semaphore, vk::Fence());
-	assert(resultValue.result == vk::Result::eSuccess);
 
-	frameIndex = resultValue.value;
-	return frameIndex;
+	if (resultValue.result == vk::Result::eSuccess || resultValue.result == vk::Result::eSuboptimalKHR)
+	{
+		frameIndex = resultValue.value;
+	}
+
+	return resultValue.result;
 }
 
 vk::Fence PlatformVulkan::GetSubmitFence(bool destroy)
@@ -671,7 +701,7 @@ bool PlatformVulkan::Initialize(Window* window, bool waitVSync)
 		vkCmdBuffers = vkDevice_.allocateCommandBuffers(allocInfo);
 
 		// create depth buffer
-		if (!CreateDepthBuffer(window->GetWindowSize()))
+		if (IsSwapchainValid() && !CreateDepthBuffer(swapchainSize_))
 		{
 			exitWithError();
 			return false;
@@ -707,7 +737,28 @@ bool PlatformVulkan::NewFrame()
 
 	if (IsSwapchainValid())
 	{
-		AcquireNextImage(vkPresentComplete_);
+		auto acquireResult = AcquireNextImage(vkPresentComplete_);
+		if (acquireResult == vk::Result::eErrorOutOfDateKHR)
+		{
+			vkDevice_.waitIdle();
+			if (!RecreateSwapchain(windowSize_))
+			{
+				return false;
+			}
+
+			if (IsSwapchainValid())
+			{
+				acquireResult = AcquireNextImage(vkPresentComplete_);
+			}
+		}
+
+		if (IsSwapchainValid() && acquireResult != vk::Result::eSuccess && acquireResult != vk::Result::eSuboptimalKHR)
+		{
+			std::stringstream ss;
+			ss << "Failed to acquire next image : " << VulkanHelper::getResultName(static_cast<VkResult>(acquireResult));
+			Log(LogType::Error, ss.str());
+			return false;
+		}
 	}
 	executedCommandCount = 0;
 	return true;
@@ -764,12 +815,13 @@ void PlatformVulkan::Present()
 	const auto result = Present(vkRenderComplete_);
 
 	// TODO optimize it
-	if (result == vk::Result::eErrorOutOfDateKHR)
+	if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR)
 	{
 		vkDevice_.waitIdle();
-		CreateSwapChain(windowSize_, waitVSync_);
-		CreateDepthBuffer(windowSize_);
-		CreateRenderPass();
+		if (!RecreateSwapchain(windowSize_))
+		{
+			Log(LogType::Error, "Failed to recreate swapchain after present.");
+		}
 	}
 }
 
@@ -781,11 +833,11 @@ void PlatformVulkan::SetWindowSize(const Vec2I& windowSize)
 	}
 
 	vkDevice_.waitIdle();
-	CreateSwapChain(windowSize, waitVSync_);
-
-	CreateDepthBuffer(windowSize);
-
-	CreateRenderPass();
+	if (!RecreateSwapchain(windowSize))
+	{
+		Log(LogType::Error, "Failed to recreate swapchain after resize.");
+		return;
+	}
 	windowSize_ = windowSize;
 }
 

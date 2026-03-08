@@ -56,6 +56,7 @@ private:
 	int32_t queueFamilyIndex_ = 0;
 
 	Vec2I windowSize_;
+	Vec2I swapchainSize_;
 
 	//! to check to finish present
 	vk::Semaphore vkPresentComplete_;
@@ -97,13 +98,15 @@ private:
 
 	bool CreateDepthBuffer(Vec2I windowSize);
 
+	bool RecreateSwapchain(const Vec2I& windowSize);
+
 	void CreateRenderPass();
 
 	/*!
 		@brief	get swap buffer index
 		@param	semaphore	the signaling semaphore to be waited for other functions
 	*/
-	uint32_t AcquireNextImage(vk::Semaphore& semaphore);
+	vk::Result AcquireNextImage(vk::Semaphore& semaphore);
 
 	vk::Fence GetSubmitFence(bool destroy = false);
 

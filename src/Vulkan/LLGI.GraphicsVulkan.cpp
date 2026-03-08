@@ -7,6 +7,7 @@
 #include "LLGI.SingleFrameMemoryPoolVulkan.h"
 #include "LLGI.TextureVulkan.h"
 #include "LLGI.QueryVulkan.h"
+#include "../LLGI.Platform.h"
 
 namespace LLGI
 {
@@ -47,7 +48,16 @@ GraphicsVulkan::~GraphicsVulkan()
 	SafeRelease(owner_);
 }
 
-void GraphicsVulkan::SetWindowSize(const Vec2I& windowSize) { throw "Not inplemented"; }
+void GraphicsVulkan::SetWindowSize(const Vec2I& windowSize)
+{
+	if (auto platform = dynamic_cast<Platform*>(owner_))
+	{
+		platform->SetWindowSize(windowSize);
+		return;
+	}
+
+	Graphics::SetWindowSize(windowSize);
+}
 
 void GraphicsVulkan::Execute(CommandList* commandList)
 {

@@ -1010,8 +1010,11 @@ void CommandListDX12::ClearDepth()
 		return;
 	}
 
+	auto depthTexture = static_cast<TextureDX12*>(rt->GetDepthTexture());
+	const auto clearFlags = HasStencil(depthTexture->GetFormat()) ? D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL : D3D12_CLEAR_FLAG_DEPTH;
+
 	auto handle = rt->GetHandleDSV();
-	currentCommandList_->ClearDepthStencilView(handle[0], D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+	currentCommandList_->ClearDepthStencilView(handle[0], clearFlags, 1.0f, 0, 0, nullptr);
 }
 
 ID3D12GraphicsCommandList* CommandListDX12::GetCommandList() const { return commandList_.get(); }
