@@ -462,6 +462,9 @@ bool PlatformVulkan::Initialize(Window* window, bool waitVSync)
 		VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
 #elif defined(__APPLE__)
 		VK_MVK_MACOS_SURFACE_EXTENSION_NAME,
+#if defined(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME)
+		VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
+#endif
 #else
 		VK_KHR_XCB_SURFACE_EXTENSION_NAME,
 #endif
@@ -497,6 +500,9 @@ bool PlatformVulkan::Initialize(Window* window, bool waitVSync)
 		instanceCreateInfo.pApplicationInfo = &appInfo;
 		instanceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
 		instanceCreateInfo.ppEnabledExtensionNames = extensions.data();
+#if defined(__APPLE__) && defined(VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR)
+		instanceCreateInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+#endif
 #if !defined(NDEBUG)
 
 		uint32_t layerCount = 0;
@@ -523,6 +529,12 @@ bool PlatformVulkan::Initialize(Window* window, bool waitVSync)
 
 		// get physics device
 		auto physicalDevices = vkInstance_.enumeratePhysicalDevices();
+		if (physicalDevices.empty())
+		{
+			Log(LogType::Error, "No Vulkan physical devices found.");
+			exitWithError();
+			return false;
+		}
 		vkPhysicalDevice = physicalDevices[0];
 
 		struct Version
