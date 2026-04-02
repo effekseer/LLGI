@@ -45,7 +45,8 @@ bool PlatformVulkan::CreateSwapChain(Vec2I windowSize, bool waitVSync)
 {
 	auto oldSwapChain = swapchain_;
 
-	const auto disposeOldSwapchain = [&]() {
+	const auto disposeOldSwapchain = [&]()
+	{
 		if (oldSwapChain)
 		{
 			for (uint32_t i = 0; i < swapBuffers.size(); i++)
@@ -459,6 +460,8 @@ bool PlatformVulkan::Initialize(Window* window, bool waitVSync)
 		VK_KHR_SURFACE_EXTENSION_NAME,
 #ifdef _WIN32
 		VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
+#elif defined(__APPLE__)
+		VK_MVK_MACOS_SURFACE_EXTENSION_NAME,
 #else
 		VK_KHR_XCB_SURFACE_EXTENSION_NAME,
 #endif
@@ -468,7 +471,8 @@ bool PlatformVulkan::Initialize(Window* window, bool waitVSync)
 #endif
 	};
 
-	auto exitWithError = [this]() -> void {
+	auto exitWithError = [this]() -> void
+	{
 		Reset();
 
 		SafeRelease(depthStencilTexture_);
@@ -539,6 +543,10 @@ bool PlatformVulkan::Initialize(Window* window, bool waitVSync)
 		surfaceCreateInfo.hinstance = (HINSTANCE)window->GetNativePtr(1);
 		surfaceCreateInfo.hwnd = (HWND)window->GetNativePtr(0);
 		surface_ = vkInstance_.createWin32SurfaceKHR(surfaceCreateInfo);
+#elif defined(__APPLE__)
+		vk::MacOSSurfaceCreateInfoMVK surfaceCreateInfo;
+		surfaceCreateInfo.pView = window->GetNativePtr(1);
+		surface_ = vkInstance_.createMacOSSurfaceMVK(surfaceCreateInfo);
 #else
 		vk::XcbSurfaceCreateInfoKHR surfaceCreateInfo;
 		surfaceCreateInfo.connection = XGetXCBConnection((Display*)window->GetNativePtr(0));
@@ -791,7 +799,8 @@ void PlatformVulkan::SetWindowSize(const Vec2I& windowSize)
 
 Graphics* PlatformVulkan::CreateGraphics()
 {
-	auto addCommand = [this](vk::CommandBuffer commandBuffer, vk::Fence fence) -> void {
+	auto addCommand = [this](vk::CommandBuffer commandBuffer, vk::Fence fence) -> void
+	{
 		std::array<vk::SubmitInfo, 1> copySubmitInfos;
 		copySubmitInfos[0].commandBufferCount = 1;
 		copySubmitInfos[0].pCommandBuffers = &commandBuffer;

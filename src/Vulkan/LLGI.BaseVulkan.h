@@ -8,6 +8,10 @@
 #ifdef _WIN32
 #define VK_PROTOTYPES
 #define VK_USE_PLATFORM_WIN32_KHR
+#elif defined(__APPLE__)
+#define VK_PROTOTYPES
+#define VK_ENABLE_BETA_EXTENSIONS
+#define VK_USE_PLATFORM_MACOS_MVK
 #else
 #define VK_PROTOTYPES
 #define VK_USE_PLATFORM_XCB_KHR

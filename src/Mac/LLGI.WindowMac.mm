@@ -165,7 +165,15 @@ void* WindowMac::GetNSWindowAsVoidPtr() { return impl_->window_; }
 
 bool WindowMac::OnNewFrame() { return DoEvent(); }
 
-void* WindowMac::GetNativePtr(int32_t index) { return GetNSWindowAsVoidPtr(); }
+void* WindowMac::GetNativePtr(int32_t index)
+{
+	if (index == 1)
+	{
+		return impl_->window_.contentView;
+	}
+
+	return GetNSWindowAsVoidPtr();
+}
 
 Vec2I WindowMac::GetWindowSize() const { return windowSize_; }
 
