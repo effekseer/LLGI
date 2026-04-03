@@ -15,14 +15,15 @@ namespace LLGI
 
 BufferMetal::BufferMetal()
 {
-	
+
 }
 
 BufferMetal::~BufferMetal()
 {
     if (isExternalResource_)
+	{
         return;
-    
+    }
 	if (buffer_ != nullptr)
 	{
 		[buffer_ release];
@@ -38,7 +39,7 @@ bool BufferMetal::Initialize(Graphics* graphics, BufferUsageType usage, int32_t 
 	}
 
     auto g = static_cast<GraphicsMetal*>(graphics);
-    
+
     if(BitwiseContains(usage, BufferUsageType::MapWrite) || BitwiseContains(usage, BufferUsageType::MapRead))
     {
         buffer_ = [g->GetDevice() newBufferWithLength:size options:MTLResourceStorageModeShared];
@@ -47,9 +48,9 @@ bool BufferMetal::Initialize(Graphics* graphics, BufferUsageType usage, int32_t 
     {
         buffer_ = [g->GetDevice() newBufferWithLength:size options:MTLResourceStorageModePrivate];
     }
-        
+
     size_ = size;
-    
+
     return true;
 }
 

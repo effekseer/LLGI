@@ -7,6 +7,8 @@
 
 #ifdef _WIN32
 #include "../Win/LLGI.WindowWin.h"
+#elif defined(__APPLE__)
+#include "../Mac/LLGI.WindowMac.h"
 #else
 #include "../Linux/LLGI.WindowLinux.h"
 #endif
