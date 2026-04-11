@@ -541,12 +541,19 @@ inline bool IsBlockCompressedFormat(TextureFormatType format)
 	switch (format)
 	{
 	case TextureFormatType::BC1:
+		return true;
 	case TextureFormatType::BC2:
+		return true;
 	case TextureFormatType::BC3:
+		return true;
 	case TextureFormatType::BC7:
+		return true;
 	case TextureFormatType::BC1_SRGB:
+		return true;
 	case TextureFormatType::BC2_SRGB:
+		return true;
 	case TextureFormatType::BC3_SRGB:
+		return true;
 	case TextureFormatType::BC7_SRGB:
 		return true;
 	default:
@@ -564,15 +571,27 @@ inline int32_t GetTextureRowPitch(TextureFormatType format, Vec3I size)
 	switch (format)
 	{
 	case TextureFormatType::R8G8B8A8_UNORM:
+		return size.X * 4;
 	case TextureFormatType::B8G8R8A8_UNORM:
+		return size.X * 4;
 	case TextureFormatType::R16G16_FLOAT:
+		return size.X * 4;
 	case TextureFormatType::R8G8B8A8_UNORM_SRGB:
+		return size.X * 4;
 	case TextureFormatType::B8G8R8A8_UNORM_SRGB:
+		return size.X * 4;
 	case TextureFormatType::D32:
+		return size.X * 4;
 	case TextureFormatType::D24S8:
 		return size.X * 4;
 	case TextureFormatType::R8_UNORM:
 		return size.X;
+	case TextureFormatType::R16_FLOAT:
+		return size.X * 2;
+	case TextureFormatType::R32_FLOAT:
+		return size.X * 4;
+	case TextureFormatType::R32G32_FLOAT:
+		return size.X * 8;
 	case TextureFormatType::R16G16B16A16_FLOAT:
 		return size.X * 8;
 	case TextureFormatType::R32G32B32A32_FLOAT:
@@ -580,13 +599,19 @@ inline int32_t GetTextureRowPitch(TextureFormatType format, Vec3I size)
 	case TextureFormatType::D32S8:
 		return size.X * 5;
 	case TextureFormatType::BC1:
+		return blockCountX * 8;
 	case TextureFormatType::BC1_SRGB:
 		return blockCountX * 8;
 	case TextureFormatType::BC2:
+		return blockCountX * 16;
 	case TextureFormatType::BC3:
+		return blockCountX * 16;
 	case TextureFormatType::BC7:
+		return blockCountX * 16;
 	case TextureFormatType::BC2_SRGB:
+		return blockCountX * 16;
 	case TextureFormatType::BC3_SRGB:
+		return blockCountX * 16;
 	case TextureFormatType::BC7_SRGB:
 		return blockCountX * 16;
 	default:
