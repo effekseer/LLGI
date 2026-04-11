@@ -1,5 +1,6 @@
 #include "LLGI.BaseVulkan.h"
 #include "LLGI.GraphicsVulkan.h"
+#include <iterator>
 
 namespace LLGI
 {
@@ -85,7 +86,7 @@ static FormatConversionItem s_formatConversionTable[] = {
 
 VkFormat VulkanHelper::TextureFormatToVkFormat(TextureFormatType format)
 {
-	for (size_t i = 0; i < sizeof(s_formatConversionTable); i++)
+	for (size_t i = 0; i < std::size(s_formatConversionTable); i++)
 	{
 		if (s_formatConversionTable[i].format == format)
 			return s_formatConversionTable[i].vulkanFormat;
@@ -99,7 +100,7 @@ VkFormat VulkanHelper::TextureFormatToVkFormat(TextureFormatType format)
 
 TextureFormatType VulkanHelper::VkFormatToTextureFormat(VkFormat format)
 {
-	for (size_t i = 0; i < sizeof(s_formatConversionTable); i++)
+	for (size_t i = 0; i < std::size(s_formatConversionTable); i++)
 	{
 		if (s_formatConversionTable[i].vulkanFormat == format)
 			return s_formatConversionTable[i].format;
