@@ -536,57 +536,82 @@ inline std::string to_string(TextureFormatType format)
 	}
 }
 
-inline int32_t GetTextureMemorySize(TextureFormatType format, Vec3I size)
+inline bool IsBlockCompressedFormat(TextureFormatType format)
 {
+	switch (format)
+	{
+	case TextureFormatType::BC1:
+	case TextureFormatType::BC2:
+	case TextureFormatType::BC3:
+	case TextureFormatType::BC7:
+	case TextureFormatType::BC1_SRGB:
+	case TextureFormatType::BC2_SRGB:
+	case TextureFormatType::BC3_SRGB:
+	case TextureFormatType::BC7_SRGB:
+		return true;
+	default:
+		return false;
+	}
+}
+
+inline int32_t GetTextureRowPitch(TextureFormatType format, Vec3I size)
+{
+	if (size.X <= 0 || size.Y <= 0 || size.Z <= 0)
+		return 0;
+
 	const auto blockCountX = (size.X + 3) / 4;
-	const auto blockCountY = (size.Y + 3) / 4;
-	const auto depth = size.Z;
 
 	switch (format)
 	{
 	case TextureFormatType::R8G8B8A8_UNORM:
-		return size.X * size.Y * size.Z * 4;
 	case TextureFormatType::B8G8R8A8_UNORM:
-		return size.X * size.Y * size.Z * 4;
-	case TextureFormatType::R8_UNORM:
-		return size.X * size.Y * size.Z * 1;
 	case TextureFormatType::R16G16_FLOAT:
-		return size.X * size.Y * size.Z * 4;
-	case TextureFormatType::R16G16B16A16_FLOAT:
-		return size.X * size.Y * size.Z * 8;
-	case TextureFormatType::R32G32B32A32_FLOAT:
-		return size.X * size.Y * size.Z * 16;
-	case TextureFormatType::BC1:
-		return blockCountX * blockCountY * depth * 8;
-	case TextureFormatType::BC2:
-		return blockCountX * blockCountY * depth * 16;
-	case TextureFormatType::BC3:
-		return blockCountX * blockCountY * depth * 16;
-	case TextureFormatType::BC7:
-		return blockCountX * blockCountY * depth * 16;
 	case TextureFormatType::R8G8B8A8_UNORM_SRGB:
-		return size.X * size.Y * size.Z * 4;
 	case TextureFormatType::B8G8R8A8_UNORM_SRGB:
-		return size.X * size.Y * size.Z * 4;
-	case TextureFormatType::BC1_SRGB:
-		return blockCountX * blockCountY * depth * 8;
-	case TextureFormatType::BC2_SRGB:
-		return blockCountX * blockCountY * depth * 16;
-	case TextureFormatType::BC3_SRGB:
-		return blockCountX * blockCountY * depth * 16;
-	case TextureFormatType::BC7_SRGB:
-		return blockCountX * blockCountY * depth * 16;
 	case TextureFormatType::D32:
-		return size.X * size.Y * size.Z * 4;
 	case TextureFormatType::D24S8:
-		return size.X * size.Y * size.Z * 4;
+		return size.X * 4;
+	case TextureFormatType::R8_UNORM:
+		return size.X;
+	case TextureFormatType::R16G16B16A16_FLOAT:
+		return size.X * 8;
+	case TextureFormatType::R32G32B32A32_FLOAT:
+		return size.X * 16;
 	case TextureFormatType::D32S8:
-		return size.X * size.Y * size.Z * 5;
+		return size.X * 5;
+	case TextureFormatType::BC1:
+	case TextureFormatType::BC1_SRGB:
+		return blockCountX * 8;
+	case TextureFormatType::BC2:
+	case TextureFormatType::BC3:
+	case TextureFormatType::BC7:
+	case TextureFormatType::BC2_SRGB:
+	case TextureFormatType::BC3_SRGB:
+	case TextureFormatType::BC7_SRGB:
+		return blockCountX * 16;
 	default:
 		auto str = to_string(format);
-		Log(LogType::Error, str + " : GetTextureMemorySize is not supported");
+		Log(LogType::Error, str + " : GetTextureRowPitch is not supported");
 		return 0;
 	}
+}
+
+inline int32_t GetTextureRowCount(TextureFormatType format, Vec3I size)
+{
+	if (size.Y <= 0 || size.Z <= 0)
+		return 0;
+
+	if (IsBlockCompressedFormat(format))
+	{
+		return ((size.Y + 3) / 4) * size.Z;
+	}
+
+	return size.Y * size.Z;
+}
+
+inline int32_t GetTextureMemorySize(TextureFormatType format, Vec3I size)
+{
+	return GetTextureRowPitch(format, size) * GetTextureRowCount(format, size);
 }
 
 inline uint32_t GetMaximumMipLevels(const Vec2I& size)

@@ -195,7 +195,7 @@ void TextureDX12::CreateUploadReadbackBuffer()
 												1);
 	assert(buffer_for_readback_ != nullptr);
 
-	if (static_cast<int32_t>(footprint_.Footprint.RowPitch) != cpu_memory_size_ / (texture_size_.Y * texture_size_.Z))
+	if (static_cast<int32_t>(footprint_.Footprint.RowPitch) != GetTextureRowPitch(format_, texture_size_))
 	{
 		locked_buffer_.resize(cpu_memory_size_);
 	}
@@ -222,11 +222,11 @@ void TextureDX12::Unlock()
 		uint8_t* ptr = nullptr;
 		buffer_for_upload_->Map(0, nullptr, (void**)&ptr);
 
-		int32_t rowCount = texture_size_.Y * texture_size_.Z;
+		const int32_t rowCount = GetTextureRowCount(format_, texture_size_);
+		const int32_t rowPitch = GetTextureRowPitch(format_, texture_size_);
 		for (int32_t i = 0; i < rowCount; i++)
 		{
 			auto p = ptr + i * footprint_.Footprint.RowPitch;
-			auto rowPitch = cpu_memory_size_ / rowCount;
 			memcpy(p, locked_buffer_.data() + rowPitch * i, rowPitch);
 		}
 

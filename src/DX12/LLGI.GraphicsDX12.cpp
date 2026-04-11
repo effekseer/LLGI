@@ -376,11 +376,12 @@ std::vector<uint8_t> GraphicsDX12::CaptureRenderTarget(Texture* renderTarget)
 		if (GetTextureMemorySize(renderTarget->GetFormat(), rtSize3) != dstBuffer.GetSize())
 		{
 			result.resize(GetTextureMemorySize(renderTarget->GetFormat(), rtSize3));
+			const auto rowPitch = GetTextureRowPitch(renderTarget->GetFormat(), rtSize3);
+			const auto rowCount = GetTextureRowCount(renderTarget->GetFormat(), rtSize3);
 
-			for (int32_t y = 0; y < renderTarget->GetSizeAs2D().Y; y++)
+			for (int32_t y = 0; y < rowCount; y++)
 			{
-				auto pitch = GetTextureMemorySize(renderTarget->GetFormat(), rtSize3) / renderTarget->GetSizeAs2D().Y;
-				memcpy(result.data() + pitch * y, raw + dstFootprint.RowPitch * y, pitch);
+				memcpy(result.data() + rowPitch * y, raw + dstFootprint.RowPitch * y, rowPitch);
 			}
 		}
 		else
