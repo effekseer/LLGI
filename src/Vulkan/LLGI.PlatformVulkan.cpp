@@ -642,15 +642,8 @@ bool PlatformVulkan::Initialize(Window* window, bool waitVSync)
 #if !defined(NDEBUG)
 		if (optimalLayers.size() > 0)
 		{
-			deviceCreateInfo.enabledLayerCount = static_cast<uint32_t>(optimalLayers.size());
-			deviceCreateInfo.ppEnabledLayerNames = optimalLayers.data();
+			deviceCreateInfo.setPEnabledLayerNames(optimalLayers);
 		}
-		else
-		{
-			deviceCreateInfo.enabledLayerCount = 0;
-		}
-#else
-		deviceCreateInfo.enabledLayerCount = 0;
 #endif
 		vkDevice_ = vkPhysicalDevice.createDevice(deviceCreateInfo);
 

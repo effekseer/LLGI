@@ -538,6 +538,10 @@ inline std::string to_string(TextureFormatType format)
 
 inline int32_t GetTextureMemorySize(TextureFormatType format, Vec3I size)
 {
+	const auto blockCountX = (size.X + 3) / 4;
+	const auto blockCountY = (size.Y + 3) / 4;
+	const auto depth = size.Z;
+
 	switch (format)
 	{
 	case TextureFormatType::R8G8B8A8_UNORM:
@@ -552,10 +556,26 @@ inline int32_t GetTextureMemorySize(TextureFormatType format, Vec3I size)
 		return size.X * size.Y * size.Z * 8;
 	case TextureFormatType::R32G32B32A32_FLOAT:
 		return size.X * size.Y * size.Z * 16;
+	case TextureFormatType::BC1:
+		return blockCountX * blockCountY * depth * 8;
+	case TextureFormatType::BC2:
+		return blockCountX * blockCountY * depth * 16;
+	case TextureFormatType::BC3:
+		return blockCountX * blockCountY * depth * 16;
+	case TextureFormatType::BC7:
+		return blockCountX * blockCountY * depth * 16;
 	case TextureFormatType::R8G8B8A8_UNORM_SRGB:
 		return size.X * size.Y * size.Z * 4;
 	case TextureFormatType::B8G8R8A8_UNORM_SRGB:
 		return size.X * size.Y * size.Z * 4;
+	case TextureFormatType::BC1_SRGB:
+		return blockCountX * blockCountY * depth * 8;
+	case TextureFormatType::BC2_SRGB:
+		return blockCountX * blockCountY * depth * 16;
+	case TextureFormatType::BC3_SRGB:
+		return blockCountX * blockCountY * depth * 16;
+	case TextureFormatType::BC7_SRGB:
+		return blockCountX * blockCountY * depth * 16;
 	case TextureFormatType::D32:
 		return size.X * size.Y * size.Z * 4;
 	case TextureFormatType::D24S8:
