@@ -511,6 +511,8 @@ inline std::string to_string(TextureFormatType format)
 		return "BC2";
 	case TextureFormatType::BC3:
 		return "BC3";
+	case TextureFormatType::BC7:
+		return "BC7";
 	case TextureFormatType::R8G8B8A8_UNORM_SRGB:
 		return "R8G8B8A8_UNORM_SRGB";
 	case TextureFormatType::B8G8R8A8_UNORM_SRGB:
@@ -521,6 +523,8 @@ inline std::string to_string(TextureFormatType format)
 		return "BC2_SRGB";
 	case TextureFormatType::BC3_SRGB:
 		return "BC3_SRGB";
+	case TextureFormatType::BC7_SRGB:
+		return "BC7_SRGB";
 	case TextureFormatType::D32:
 		return "D32";
 	case TextureFormatType::D32S8:

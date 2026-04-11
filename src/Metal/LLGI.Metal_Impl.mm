@@ -163,6 +163,14 @@ TextureFormatType ConvertFormat(MTLPixelFormat format)
 	{
 		return TextureFormatType::BC3_SRGB;
 	}
+	else if (format == MTLPixelFormatBC7_RGBAUnorm)
+	{
+		return TextureFormatType::BC7;
+	}
+	else if (format == MTLPixelFormatBC7_RGBAUnorm_sRGB)
+	{
+		return TextureFormatType::BC7_SRGB;
+	}
 	else if (format == MTLPixelFormatDepth24Unorm_Stencil8)
 	{
 		return TextureFormatType::D24S8;
