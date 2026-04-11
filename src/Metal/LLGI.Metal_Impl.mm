@@ -79,6 +79,14 @@ MTLPixelFormat ConvertFormat(TextureFormatType format)
 	{
 		return MTLPixelFormatBC3_RGBA_sRGB;
 	}
+	else if (format == TextureFormatType::BC7)
+	{
+		return MTLPixelFormatBC7_RGBAUnorm;
+	}
+	else if (format == TextureFormatType::BC7_SRGB)
+	{
+		return MTLPixelFormatBC7_RGBAUnorm_sRGB;
+	}
 	else if (format == TextureFormatType::D24S8)
 	{
 		return MTLPixelFormatDepth24Unorm_Stencil8;
@@ -176,4 +184,4 @@ TextureFormatType ConvertFormat(MTLPixelFormat format)
 	return TextureFormatType::Unknown;
 }
 
-}
+} // namespace LLGI
