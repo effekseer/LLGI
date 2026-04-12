@@ -79,6 +79,14 @@ MTLPixelFormat ConvertFormat(TextureFormatType format)
 	{
 		return MTLPixelFormatBC3_RGBA_sRGB;
 	}
+	else if (format == TextureFormatType::BC7)
+	{
+		return MTLPixelFormatBC7_RGBAUnorm;
+	}
+	else if (format == TextureFormatType::BC7_SRGB)
+	{
+		return MTLPixelFormatBC7_RGBAUnorm_sRGB;
+	}
 	else if (format == TextureFormatType::D24S8)
 	{
 		return MTLPixelFormatDepth24Unorm_Stencil8;
@@ -155,6 +163,14 @@ TextureFormatType ConvertFormat(MTLPixelFormat format)
 	{
 		return TextureFormatType::BC3_SRGB;
 	}
+	else if (format == MTLPixelFormatBC7_RGBAUnorm)
+	{
+		return TextureFormatType::BC7;
+	}
+	else if (format == MTLPixelFormatBC7_RGBAUnorm_sRGB)
+	{
+		return TextureFormatType::BC7_SRGB;
+	}
 	else if (format == MTLPixelFormatDepth24Unorm_Stencil8)
 	{
 		return TextureFormatType::D24S8;
@@ -176,4 +192,4 @@ TextureFormatType ConvertFormat(MTLPixelFormat format)
 	return TextureFormatType::Unknown;
 }
 
-}
+} // namespace LLGI

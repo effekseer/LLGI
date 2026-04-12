@@ -1,5 +1,6 @@
 #include "LLGI.BaseVulkan.h"
 #include "LLGI.GraphicsVulkan.h"
+#include <iterator>
 
 namespace LLGI
 {
@@ -70,11 +71,13 @@ static FormatConversionItem s_formatConversionTable[] = {
 	{TextureFormatType::BC1, VK_FORMAT_BC1_RGBA_UNORM_BLOCK},
 	{TextureFormatType::BC2, VK_FORMAT_BC2_UNORM_BLOCK},
 	{TextureFormatType::BC3, VK_FORMAT_BC3_UNORM_BLOCK},
+	{TextureFormatType::BC7, VK_FORMAT_BC7_UNORM_BLOCK},
 	{TextureFormatType::R8G8B8A8_UNORM_SRGB, VK_FORMAT_R8G8B8A8_SRGB},
 	{TextureFormatType::B8G8R8A8_UNORM_SRGB, VK_FORMAT_B8G8R8A8_SRGB},
 	{TextureFormatType::BC1_SRGB, VK_FORMAT_BC1_RGBA_SRGB_BLOCK},
 	{TextureFormatType::BC2_SRGB, VK_FORMAT_BC2_SRGB_BLOCK},
 	{TextureFormatType::BC3_SRGB, VK_FORMAT_BC3_SRGB_BLOCK},
+	{TextureFormatType::BC7_SRGB, VK_FORMAT_BC7_SRGB_BLOCK},
 	{TextureFormatType::D32, VK_FORMAT_D32_SFLOAT},
 	{TextureFormatType::D24S8, VK_FORMAT_D24_UNORM_S8_UINT},
 	{TextureFormatType::D32S8, VK_FORMAT_D32_SFLOAT_S8_UINT},
@@ -83,7 +86,7 @@ static FormatConversionItem s_formatConversionTable[] = {
 
 VkFormat VulkanHelper::TextureFormatToVkFormat(TextureFormatType format)
 {
-	for (size_t i = 0; i < sizeof(s_formatConversionTable); i++)
+	for (size_t i = 0; i < std::size(s_formatConversionTable); i++)
 	{
 		if (s_formatConversionTable[i].format == format)
 			return s_formatConversionTable[i].vulkanFormat;
@@ -97,7 +100,7 @@ VkFormat VulkanHelper::TextureFormatToVkFormat(TextureFormatType format)
 
 TextureFormatType VulkanHelper::VkFormatToTextureFormat(VkFormat format)
 {
-	for (size_t i = 0; i < sizeof(s_formatConversionTable); i++)
+	for (size_t i = 0; i < std::size(s_formatConversionTable); i++)
 	{
 		if (s_formatConversionTable[i].vulkanFormat == format)
 			return s_formatConversionTable[i].format;
