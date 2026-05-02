@@ -35,5 +35,6 @@
 **/Debug
 /build
 /build_clangformat
+/thirdparty/dawn/
 
 .DS_Store
