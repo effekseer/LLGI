@@ -8,7 +8,7 @@ implementation and WGSL as the shader source format.
 - CMake 3.15 or newer
 - A C++17-capable toolchain
 - `BUILD_WEBGPU=ON`
-- Dawn, either supplied as a checkout or fetched by CMake
+- Dawn, prepared with `scripts/fetch_dawn.py` or supplied as an existing checkout
 - `BUILD_TOOL=ON` when rebuilding WGSL shader assets with `ShaderTranspiler`
 
 On Windows, Dawn normally uses D3D12. Vulkan or other Dawn adapters may be
@@ -20,35 +20,40 @@ available depending on the local Dawn build and runtime environment.
 | --- | --- | --- |
 | `BUILD_WEBGPU` | `OFF` | Enable the WebGPU backend |
 | `WEBGPU_DAWN_SOURCE_DIR` | empty | Use an existing Dawn checkout |
-| `WEBGPU_FETCH_DAWN` | `ON` | Fetch Dawn with `FetchContent` when no checkout is available |
-| `WEBGPU_DAWN_FETCH_DEPENDENCIES` | `ON` | Let Dawn fetch/sync its own dependencies during configure |
 | `WEBGPU_DAWN_BUILD_SAMPLES` | `OFF` | Build Dawn sample executables |
-| `WEBGPU_DAWN_FORCE_SYSTEM_COMPONENT_LOAD` | `OFF` | Let Dawn load Windows system components such as `d3dcompiler_47.dll` from System32 |
-| `WEBGPU_DAWN_GIT_REPOSITORY` | `https://dawn.googlesource.com/dawn` | Dawn repository used by `FetchContent` |
-| `WEBGPU_DAWN_GIT_TAG` | `main` | Dawn branch, tag, or commit used by `FetchContent` |
+| `WEBGPU_DAWN_FORCE_SYSTEM_COMPONENT_LOAD` | `ON` | Let Dawn load Windows system components such as `d3dcompiler_47.dll` from System32 |
 
 ## Getting Dawn
 
-### FetchContent
+### Recommended Flow
 
-If neither `WEBGPU_DAWN_SOURCE_DIR` nor `thirdparty/dawn` is present, CMake
-fetches Dawn automatically:
+Dawn should be fetched before configuring LLGI. The helper script clones Dawn
+into `thirdparty/dawn` and runs Dawn's dependency fetch script:
+
+```bash
+python scripts/fetch_dawn.py
+```
+
+Pin a Dawn revision for reproducible builds:
+
+```bash
+python scripts/fetch_dawn.py --revision <branch-tag-or-commit>
+```
+
+Then configure LLGI:
 
 ```bash
 cmake -S . -B build-webgpu \
   -DBUILD_WEBGPU=ON \
   -DBUILD_TEST=ON \
-  -DBUILD_TOOL=ON \
-  -DWEBGPU_FETCH_DAWN=ON \
-  -DWEBGPU_DAWN_GIT_TAG=main
+  -DBUILD_TOOL=ON
 cmake --build build-webgpu --config Release
 ```
 
-Pin `WEBGPU_DAWN_GIT_TAG` to a known commit for reproducible builds.
-
 ### Existing Dawn Checkout
 
-You can use a separate Dawn checkout:
+You can use a separate Dawn checkout if its dependencies have already been
+fetched:
 
 ```bash
 cmake -S . -B build-webgpu \
@@ -61,8 +66,9 @@ cmake --build build-webgpu --config Release
 
 ### `thirdparty/dawn`
 
-The repository also checks `thirdparty/dawn` automatically. This is useful when
-you want Dawn to live inside the LLGI working tree.
+The repository checks `thirdparty/dawn` automatically. This is useful when you
+want Dawn to live inside the LLGI working tree. Prefer the helper script above,
+or run Dawn's official setup manually:
 
 ```bash
 cd thirdparty
@@ -117,7 +123,7 @@ rewrites are not applied.
 
 - The backend is experimental and is not enabled by default.
 - Dawn API and Tint WGSL output can change. Prefer pinning
-  `WEBGPU_DAWN_GIT_TAG` for stable builds.
+  `scripts/fetch_dawn.py --revision` for stable builds.
 - The WebGPU backend currently depends on Dawn CMake targets
   `dawn::webgpu_dawn` or `webgpu_dawn`.
 - WebGPU shader assets should be regenerated when the shader transpiler or Tint
@@ -129,11 +135,13 @@ rewrites are not applied.
 
 ## Troubleshooting
 
-- If configure fails because Dawn is missing, set `WEBGPU_DAWN_SOURCE_DIR`, add
-  `thirdparty/dawn`, or keep `WEBGPU_FETCH_DAWN=ON`.
+- If configure fails because Dawn is missing, run `python scripts/fetch_dawn.py`,
+  add `thirdparty/dawn`, or set `WEBGPU_DAWN_SOURCE_DIR`.
 - If Dawn dependency sync fails, install `depot_tools` and ensure `gclient` is
   available on `PATH`, or use a Dawn checkout whose dependencies are already
   synced.
+- If WebGPU device creation fails on Windows with `d3dcompiler_47.dll`, rebuild
+  with `WEBGPU_DAWN_FORCE_SYSTEM_COMPONENT_LOAD=ON`.
 - If shader creation fails, regenerate WGSL with the current `ShaderTranspiler`
   and check that the generated shaders are under `src_test/Shaders/WebGPU/` and
   `src_test/Shaders/WebGPU_Compiled/`.
