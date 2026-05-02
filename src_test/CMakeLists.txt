@@ -2,6 +2,7 @@ if(BUILD_WEBGPU_BROWSER_TEST)
   set(files main.cpp TestHelper.cpp TestHelper.h test.h test_webgpu_browser.cpp)
 else()
   file(GLOB files *.h *.cpp)
+  list(FILTER files EXCLUDE REGEX "test_webgpu_browser\\.cpp$")
 endif()
 
 add_executable(LLGI_Test ${files})
@@ -37,7 +38,7 @@ if(BUILD_VULKAN_COMPILER AND USE_THIRDPARTY_DIRECTORY)
   add_dependencies(LLGI_Test EP_glslang EP_SPIRV-Cross)
 endif()
 
-if(EMSCRIPTEN)
+if(BUILD_WEBGPU_BROWSER_TEST)
   set_target_properties(LLGI_Test PROPERTIES SUFFIX ".html")
   target_link_options(
     LLGI_Test
@@ -71,7 +72,7 @@ else()
   target_compile_options(LLGI_Test PRIVATE -Wall -Werror)
 endif()
 
-if(BUILD_WEBGPU_BROWSER_TEST)
+if(BUILD_WEBGPU_BROWSER_TEST AND EMSCRIPTEN)
   find_program(NODE_EXE node)
   if(NODE_EXE)
     add_test(
