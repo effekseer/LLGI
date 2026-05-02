@@ -23,16 +23,13 @@ if os.path.isfile(transpiler_path):
 elif os.path.isfile(transpiler_path_make):
     shutil.copy(transpiler_path_make, "./")
 
-transpiler_call = 'ShaderTranspiler'
-if platform.system() == 'Linux':
-    transpiler_call = './ShaderTranspiler'
+transpiler_call = os.path.join('.', transpiler_filename)
 
 verts = glob.glob(os.path.join(target_directory, 'HLSL_DX12/*.vert'), recursive=True)
 frags = glob.glob(os.path.join(target_directory, 'HLSL_DX12/*.frag'), recursive=True)
 comps = glob.glob(os.path.join(target_directory, 'HLSL_DX12/*.comp'), recursive=True)
 
 for target,directory,ext in [
-    ('-W', 'WebGPU', []),
     ('-M', 'Metal', []),
     ('-V', 'GLSL_VULKAN', []),
     ('-G', 'GLSL_GL',[]),
@@ -44,6 +41,25 @@ for target,directory,ext in [
         for f in paths:
             os.makedirs(os.path.join(target_directory, directory), exist_ok=True)
             subprocess.call([transpiler_call, kind, target, '--input', f, '--output', os.path.join(target_directory, directory, os.path.basename(f))] + ext)
+
+for kind,paths in [
+    ('--vert', verts),
+    ('--frag', frags),
+    ('--comp', comps) ]:
+    for f in paths:
+        os.makedirs(os.path.join(target_directory, 'WebGPU'), exist_ok=True)
+        os.makedirs(os.path.join(target_directory, 'WebGPU_Compiled'), exist_ok=True)
+        subprocess.call([
+            transpiler_call,
+            kind,
+            '-W',
+            '--input',
+            f,
+            '--output',
+            os.path.join(target_directory, 'WebGPU', os.path.basename(f)),
+            '--compiled-output',
+            os.path.join(target_directory, 'WebGPU_Compiled', os.path.basename(f))
+        ])
 
 verts = glob.glob(os.path.join(target_directory, 'GLSL_VULKAN/*.vert'), recursive=True)
 frags = glob.glob(os.path.join(target_directory, 'GLSL_VULKAN/*.frag'), recursive=True)

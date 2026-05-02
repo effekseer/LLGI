@@ -1,5 +1,6 @@
 
 #include <ShaderTranspilerCore.h>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -30,6 +31,7 @@ int main(int argc, char* argv[])
 	std::string code;
 	std::string inputPath;
 	std::string outputPath;
+	std::string compiledOutputPath;
 	bool isES = false;
 	bool isDX12 = false;
 	bool plain = false;
@@ -141,6 +143,18 @@ int main(int argc, char* argv[])
 			}
 
 			outputPath = args[i + 1];
+
+			i += 2;
+		}
+		else if (args[i] == "--compiled-output")
+		{
+			if (i == args.size() - 1)
+			{
+				std::cout << "Invald compiled output : arg is none" << std::endl;
+				return 0;
+			}
+
+			compiledOutputPath = args[i + 1];
 
 			i += 2;
 		}
@@ -263,6 +277,24 @@ int main(int argc, char* argv[])
 	}
 
 	outputfile << transpiler->GetCode();
+
+	if (outputType == OutputType::WGSL && compiledOutputPath != "")
+	{
+		static const char header[] = {'w', 'g', 's', 'l', 'c', 'o', 'd', 'e'};
+		const auto transpiledCode = transpiler->GetCode();
+
+		std::ofstream compiledOutput(compiledOutputPath, std::ios::binary);
+		if (compiledOutput.bad())
+		{
+			std::cout << "Invald compiled output" << std::endl;
+			return 0;
+		}
+
+		compiledOutput.write(header, sizeof(header));
+		compiledOutput.write(transpiledCode.data(), static_cast<std::streamsize>(transpiledCode.size()));
+		const char terminator = 0;
+		compiledOutput.write(&terminator, 1);
+	}
 
 	return 0;
 }

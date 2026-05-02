@@ -1,39 +1,27 @@
+diagnostic(off, derivative_uniformity);
+
+var<private> v : vec4<f32>;
+
 struct PS_INPUT {
-  g_position : vec4f,
-  g_color : vec4f,
+  g_position : vec4<f32>,
+  g_color : vec4<f32>,
 }
 
-var<private> input_g_position : vec4f;
-
-var<private> input_g_color : vec4f;
-
-var<private> x_entryPointOutput : vec4f;
-
-fn x_main_struct_PS_INPUT_vf4_vf41_(input : ptr<function, PS_INPUT>) -> vec4f {
-  let x_18 = (*(input)).g_color;
-  return x_18;
-}
-
-fn main_1() {
-  var input_1 : PS_INPUT;
+fn main_inner(v_1 : vec4<f32>, v_2 : vec4<f32>) {
+  var input : PS_INPUT;
   var param : PS_INPUT;
-  input_1.g_position = input_g_position;
-  input_1.g_color = input_g_color;
-  param = input_1;
-  let x_34 = x_main_struct_PS_INPUT_vf4_vf41_(&(param));
-  x_entryPointOutput = x_34;
-  return;
+  input.g_position = v_1;
+  input.g_color = v_2;
+  param = input;
+  v = v_3(&(param));
 }
 
-struct main_out {
-  @location(0)
-  x_entryPointOutput_1 : vec4f,
+fn v_3(input : ptr<function, PS_INPUT>) -> vec4<f32> {
+  return (*(input)).g_color;
 }
 
 @fragment
-fn main(@builtin(position) input_g_position_param : vec4f, @location(0) input_g_color_param : vec4f) -> main_out {
-  input_g_position = input_g_position_param;
-  input_g_color = input_g_color_param;
-  main_1();
-  return main_out(x_entryPointOutput);
+fn main(@builtin(position) v_4 : vec4<f32>, @location(0u) v_5 : vec4<f32>) -> @location(0u) vec4<f32> {
+  main_inner(v_4, v_5);
+  return v;
 }

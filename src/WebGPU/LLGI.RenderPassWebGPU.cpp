@@ -85,7 +85,7 @@ bool RenderPassWebGPU::Initialize(
 
 		if (resolvedTextureImpl != nullptr)
 		{
-			colorAttachments_[i].resolveTarget = resolvedDepthTextureImpl->GetTextureView();
+			colorAttachments_[i].resolveTarget = resolvedTextureImpl->GetTextureView();
 			colorAttachments_[i].storeOp = wgpu::StoreOp::Store;
 		}
 	}
@@ -107,6 +107,13 @@ bool RenderPassWebGPU::Initialize(
 			depthStencilAttachiment_.depthClearValue = 1.0f;
 		}
 
+		if (depthTextureImpl->GetFormat() == TextureFormatType::D24S8 || depthTextureImpl->GetFormat() == TextureFormatType::D32S8)
+		{
+			depthStencilAttachiment_.stencilLoadOp = GetIsDepthCleared() ? wgpu::LoadOp::Clear : wgpu::LoadOp::Load;
+			depthStencilAttachiment_.stencilStoreOp = wgpu::StoreOp::Store;
+			depthStencilAttachiment_.stencilClearValue = 0;
+		}
+
 		if (resolvedDepthTextureImpl != nullptr)
 		{
 			// ?
@@ -115,7 +122,7 @@ bool RenderPassWebGPU::Initialize(
 		descriptor_.depthStencilAttachment = &depthStencilAttachiment_;
 	}
 
-	throw "Not implemented";
+	return true;
 }
 
 } // namespace LLGI

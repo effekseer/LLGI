@@ -13,6 +13,7 @@ class PipelineStateWebGPU : public PipelineState
 	wgpu::Device device_;
 
 	wgpu::RenderPipeline renderPipeline_;
+	wgpu::ComputePipeline computePipeline_;
 
 public:
 	PipelineStateWebGPU(wgpu::Device device);
@@ -23,6 +24,7 @@ public:
 	bool Compile() override;
 
 	wgpu::RenderPipeline GetRenderPipeline() { return renderPipeline_; }
+	wgpu::ComputePipeline GetComputePipeline() { return computePipeline_; }
 };
 
 } // namespace LLGI

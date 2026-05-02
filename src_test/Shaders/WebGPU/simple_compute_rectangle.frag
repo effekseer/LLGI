@@ -1,63 +1,46 @@
-struct PS_INPUT {
-  Position : vec4f,
-  UV : vec2f,
-  Color : vec4f,
+diagnostic(off, derivative_uniformity);
+
+struct compute {
+  m : array<f32>,
 }
 
-alias RTArr = array<f32>;
+@group(1) @binding(0) var<storage, read> compute_1 : compute;
 
-struct compute_1 {
-  /* @offset(0) */
-  x_data : RTArr,
-}
+var<private> v : vec4<f32>;
 
 struct CB {
-  /* @offset(0) */
-  offset : vec4f,
+  offset : vec4<f32>,
 }
 
-@internal(disable_validation__binding_point_collision) @group(1) @binding(0) var<storage, read> compute_2 : compute_1;
+@group(0) @binding(1) var<uniform> v_1 : CB;
 
-var<private> input_Position : vec4f;
-
-var<private> input_UV : vec2f;
-
-var<private> input_Color : vec4f;
-
-var<private> x_entryPointOutput : vec4f;
-
-@internal(disable_validation__binding_point_collision) @group(0) @binding(301) var<uniform> x_60 : CB;
-
-fn x_main_struct_PS_INPUT_vf4_vf2_vf41_(input : ptr<function, PS_INPUT>) -> vec4f {
-  var c : vec4f;
-  c = ((*(input)).Color + vec4f(compute_2.x_data[0i]));
-  c.w = 1.0f;
-  let x_36 = c;
-  return x_36;
+struct PS_INPUT {
+  Position : vec4<f32>,
+  UV : vec2<f32>,
+  Color : vec4<f32>,
 }
 
-fn main_1() {
-  var input_1 : PS_INPUT;
+fn main_inner(v_2 : vec4<f32>, v_3 : vec2<f32>, v_4 : vec4<f32>) {
+  var input : PS_INPUT;
   var param : PS_INPUT;
-  input_1.Position = input_Position;
-  input_1.UV = input_UV;
-  input_1.Color = input_Color;
-  param = input_1;
-  let x_57 = x_main_struct_PS_INPUT_vf4_vf2_vf41_(&(param));
-  x_entryPointOutput = x_57;
-  return;
+  input.Position = v_2;
+  input.UV = v_3;
+  input.Color = v_4;
+  param = input;
+  v = v_5(&(param));
 }
 
-struct main_out {
-  @location(0)
-  x_entryPointOutput_1 : vec4f,
+fn v_5(input : ptr<function, PS_INPUT>) -> vec4<f32> {
+  var c : vec4<f32>;
+  let v_6 = (*(input)).Color;
+  let v_7 = compute_1.m[0i];
+  c = (v_6 + vec4<f32>(v_7, v_7, v_7, v_7));
+  c.w = 1.0f;
+  return c;
 }
 
 @fragment
-fn main(@builtin(position) input_Position_param : vec4f, @location(0) input_UV_param : vec2f, @location(1) input_Color_param : vec4f) -> main_out {
-  input_Position = input_Position_param;
-  input_UV = input_UV_param;
-  input_Color = input_Color_param;
-  main_1();
-  return main_out(x_entryPointOutput);
+fn main(@builtin(position) v_8 : vec4<f32>, @location(0u) v_9 : vec2<f32>, @location(1u) v_10 : vec4<f32>) -> @location(0u) vec4<f32> {
+  main_inner(v_8, v_9, v_10);
+  return v;
 }

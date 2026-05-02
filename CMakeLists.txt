@@ -5,6 +5,7 @@ project(LLGI)
 
 include(GNUInstallDirs)
 include(ExternalProject)
+include(FetchContent)
 
 # linux flag
 if(UNIX AND NOT APPLE)
@@ -12,6 +13,25 @@ if(UNIX AND NOT APPLE)
 endif()
 
 option(BUILD_WEBGPU "build webgpu backend" OFF)
+set(WEBGPU_DAWN_SOURCE_DIR
+    ""
+    CACHE PATH "Path to a Dawn source checkout used when BUILD_WEBGPU is ON")
+option(WEBGPU_FETCH_DAWN
+       "Fetch Dawn with CMake FetchContent when no local Dawn checkout is found"
+       ON)
+option(WEBGPU_DAWN_FETCH_DEPENDENCIES
+       "Allow Dawn to fetch/sync its own dependencies during CMake configure"
+       ON)
+option(WEBGPU_DAWN_BUILD_SAMPLES "Build Dawn sample executables" OFF)
+option(WEBGPU_DAWN_FORCE_SYSTEM_COMPONENT_LOAD
+       "Let Dawn load required Windows system components from System32"
+       OFF)
+set(WEBGPU_DAWN_GIT_REPOSITORY
+    "https://dawn.googlesource.com/dawn"
+    CACHE STRING "Dawn git repository used by WEBGPU_FETCH_DAWN")
+set(WEBGPU_DAWN_GIT_TAG
+    "main"
+    CACHE STRING "Dawn git tag or branch used by WEBGPU_FETCH_DAWN")
 option(BUILD_VULKAN "build vulkan" OFF)
 option(BUILD_VULKAN_COMPILER "build vulkan compiler" OFF)
 option(BUILD_TEST "build test" OFF)
@@ -248,7 +268,37 @@ if(BUILD_VULKAN)
 endif()
 
 if(BUILD_WEBGPU)
-  add_subdirectory(thirdparty/dawn/)
+  set(DAWN_FETCH_DEPENDENCIES ${WEBGPU_DAWN_FETCH_DEPENDENCIES}
+      CACHE BOOL "Fetch Dawn dependencies" FORCE)
+  set(DAWN_BUILD_SAMPLES ${WEBGPU_DAWN_BUILD_SAMPLES}
+      CACHE BOOL "Build Dawn samples" FORCE)
+  set(DAWN_FORCE_SYSTEM_COMPONENT_LOAD
+      ${WEBGPU_DAWN_FORCE_SYSTEM_COMPONENT_LOAD}
+      CACHE BOOL "Allow Dawn to load Windows system components from System32"
+      FORCE)
+  set(DAWN_BUILD_TESTS OFF CACHE BOOL "Build Dawn tests" FORCE)
+  set(DAWN_ENABLE_INSTALL OFF CACHE BOOL "Install Dawn targets" FORCE)
+
+  set(LLGI_DAWN_SOURCE_DIR "")
+  if(WEBGPU_DAWN_SOURCE_DIR)
+    set(LLGI_DAWN_SOURCE_DIR "${WEBGPU_DAWN_SOURCE_DIR}")
+  elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/dawn/CMakeLists.txt")
+    set(LLGI_DAWN_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/dawn")
+  endif()
+
+  if(LLGI_DAWN_SOURCE_DIR)
+    add_subdirectory("${LLGI_DAWN_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/dawn"
+                     EXCLUDE_FROM_ALL)
+  else()
+    if(NOT WEBGPU_FETCH_DAWN)
+      message(FATAL_ERROR "Dawn source was not found. Set WEBGPU_DAWN_SOURCE_DIR, add thirdparty/dawn, or enable WEBGPU_FETCH_DAWN.")
+    endif()
+    FetchContent_Declare(
+      dawn
+      GIT_REPOSITORY "${WEBGPU_DAWN_GIT_REPOSITORY}"
+      GIT_TAG "${WEBGPU_DAWN_GIT_TAG}")
+    FetchContent_MakeAvailable(dawn)
+  endif()
 endif()
 
 if(APPLE)

@@ -25,19 +25,30 @@ void PipelineStateWebGPU::SetShader(ShaderStageType stage, Shader* shader)
 
 bool PipelineStateWebGPU::Compile()
 {
+	const char* entryPointName = "main";
+	auto computeShader = static_cast<ShaderWebGPU*>(shaders_[static_cast<int>(ShaderStageType::Compute)]);
+	if (computeShader != nullptr)
+	{
+		wgpu::ComputePipelineDescriptor desc{};
+		desc.layout = nullptr;
+		desc.compute.module = computeShader->GetShaderModule();
+		desc.compute.entryPoint = entryPointName;
+		computePipeline_ = device_.CreateComputePipeline(&desc);
+		return computePipeline_ != nullptr;
+	}
+
 	wgpu::RenderPipelineDescriptor desc{};
 
 	desc.primitive.topology = Convert(Topology);
 	desc.primitive.stripIndexFormat = wgpu::IndexFormat::Undefined; // is it correct?
 	desc.primitive.frontFace = wgpu::FrontFace::CW;
 	desc.primitive.cullMode = Convert(Culling);
-	desc.multisample.count = 1;
+	desc.multisample.count = static_cast<uint32_t>(renderPassPipelineState_->Key.SamplingCount);
 	desc.multisample.mask = std::numeric_limits<int32_t>::max();
 	desc.multisample.alphaToCoverageEnabled = false;
 	desc.layout = nullptr; // is it correct?
 
 	auto vertexShader = static_cast<ShaderWebGPU*>(shaders_[static_cast<int>(ShaderStageType::Vertex)]);
-	const char* entryPointName = "main";
 
 	desc.vertex.module = vertexShader->GetShaderModule();
 	desc.vertex.entryPoint = entryPointName;
@@ -47,6 +58,8 @@ bool PipelineStateWebGPU::Compile()
 	desc.vertex.buffers = bufferLayouts.data();
 
 	bufferLayouts[0].attributeCount = VertexLayoutCount;
+	bufferLayouts[0].arrayStride = 0;
+	bufferLayouts[0].stepMode = wgpu::VertexStepMode::Vertex;
 
 	std::array<wgpu::VertexAttribute, VertexLayoutMax> attributes;
 	bufferLayouts[0].attributes = attributes.data();
@@ -59,6 +72,7 @@ bool PipelineStateWebGPU::Compile()
 		attributes[i].shaderLocation = i;
 		offset += GetSize(VertexLayouts[i]);
 	}
+	bufferLayouts[0].arrayStride = offset;
 
 	auto pixelShader = static_cast<ShaderWebGPU*>(shaders_[static_cast<int>(ShaderStageType::Pixel)]);
 
@@ -67,15 +81,15 @@ bool PipelineStateWebGPU::Compile()
 	blendState.color.srcFactor = Convert(BlendSrcFunc);
 	blendState.color.dstFactor = Convert(BlendDstFunc);
 	blendState.color.operation = Convert(BlendEquationRGB);
-	blendState.color.srcFactor = Convert(BlendSrcFuncAlpha);
-	blendState.color.dstFactor = Convert(BlendDstFuncAlpha);
-	blendState.color.operation = Convert(BlendEquationAlpha);
+	blendState.alpha.srcFactor = Convert(BlendSrcFuncAlpha);
+	blendState.alpha.dstFactor = Convert(BlendDstFuncAlpha);
+	blendState.alpha.operation = Convert(BlendEquationAlpha);
 
 	std::array<wgpu::ColorTargetState, RenderTargetMax> colorTargetStates;
 
 	for (size_t i = 0; i < renderPassPipelineState_->Key.RenderTargetFormats.size(); i++)
 	{
-		colorTargetStates[i].blend = &blendState;
+		colorTargetStates[i].blend = IsBlendEnabled ? &blendState : nullptr;
 		colorTargetStates[i].format = ConvertFormat(renderPassPipelineState_->Key.RenderTargetFormats.at(i));
 		colorTargetStates[i].writeMask = wgpu::ColorWriteMask::All;
 	}
@@ -122,7 +136,7 @@ bool PipelineStateWebGPU::Compile()
 		fs.depthFailOp = wgpu::StencilOperation::Keep;
 		fs.failOp = wgpu::StencilOperation::Keep;
 		fs.compare = wgpu::CompareFunction::Always;
-		fs.passOp = wgpu::StencilOperation::Replace;
+		fs.passOp = wgpu::StencilOperation::Keep;
 
 		depthStencilState.stencilFront = fs;
 		depthStencilState.stencilBack = fs;
@@ -131,7 +145,11 @@ bool PipelineStateWebGPU::Compile()
 		depthStencilState.stencilReadMask = 0xff;
 	}
 
-	desc.depthStencil = &depthStencilState;
+	if (renderPassPipelineState_->Key.DepthFormat != TextureFormatType::Unknown)
+	{
+		depthStencilState.format = ConvertFormat(renderPassPipelineState_->Key.DepthFormat);
+		desc.depthStencil = &depthStencilState;
+	}
 
 	renderPipeline_ = device_.CreateRenderPipeline(&desc);
 

@@ -1,69 +1,47 @@
+diagnostic(off, derivative_uniformity);
+
+@group(1) @binding(0) var g_texture1 : texture_2d<f32>;
+
+@group(2) @binding(0) var g_sampler1 : sampler;
+
+@group(1) @binding(1) var g_texture2 : texture_2d_array<f32>;
+
+@group(2) @binding(1) var g_sampler2 : sampler;
+
+@group(1) @binding(2) var g_texture3 : texture_3d<f32>;
+
+@group(2) @binding(2) var g_sampler3 : sampler;
+
+var<private> v : vec4<f32>;
+
 struct PS_Input {
-  Pos : vec4f,
-  UV : vec2f,
-  Color : vec4f,
+  Pos : vec4<f32>,
+  UV : vec2<f32>,
+  Color : vec4<f32>,
 }
 
-@internal(disable_validation__binding_point_collision) @group(1) @binding(0) var g_texture1 : texture_2d<f32>;
+fn main_inner(v_1 : vec4<f32>, v_2 : vec2<f32>, v_3 : vec4<f32>) {
+  var Input : PS_Input;
+  Input.Pos = v_1;
+  Input.UV = v_2;
+  Input.Color = v_3;
+  v = v_4(Input);
+}
 
-@internal(disable_validation__binding_point_collision) @group(4) @binding(0) var g_sampler1 : sampler;
-
-@internal(disable_validation__binding_point_collision) @group(1) @binding(1) var g_texture2 : texture_2d_array<f32>;
-
-@internal(disable_validation__binding_point_collision) @group(4) @binding(1) var g_sampler2 : sampler;
-
-@internal(disable_validation__binding_point_collision) @group(1) @binding(2) var g_texture3 : texture_3d<f32>;
-
-@internal(disable_validation__binding_point_collision) @group(4) @binding(2) var g_sampler3 : sampler;
-
-var<private> Input_Pos : vec4f;
-
-var<private> Input_UV : vec2f;
-
-var<private> Input_Color : vec4f;
-
-var<private> x_entryPointOutput : vec4f;
-
-fn x_main_struct_PS_Input_vf4_vf2_vf41_(Input : PS_Input) -> vec4f {
+fn v_4(Input : PS_Input) -> vec4<f32> {
   if ((Input.UV.x < 0.30000001192092895508f)) {
-    let x_35 = textureSample(g_texture1, g_sampler1, Input.UV);
-    return x_35;
-  } else {
-    if ((Input.UV.x < 0.60000002384185791016f)) {
-      let x_51 = Input.UV;
-      let x_57 = textureSample(g_texture2, g_sampler2, vec3f(x_51.x, x_51.y, 1.0f).xy, i32(round(vec3f(x_51.x, x_51.y, 1.0f).z)));
-      return x_57;
-    }
+    return textureSample(g_texture1, g_sampler1, Input.UV);
+  } else if ((Input.UV.x < 0.60000002384185791016f)) {
+    let v_5 = Input.UV;
+    let v_6 = vec3<f32>(v_5.x, v_5.y, 1.0f);
+    return textureSample(g_texture2, g_sampler2, v_6.xy, i32(v_6.z));
   }
-  let x_67 = Input.UV;
-  let x_72 = textureSample(g_texture3, g_sampler3, vec3f(x_67.x, x_67.y, 0.5f));
-  return x_72;
-}
-
-fn main_1() {
-  var Input_1 : PS_Input;
-  let x_80 = Input_Pos;
-  Input_1.Pos = x_80;
-  let x_85 = Input_UV;
-  Input_1.UV = x_85;
-  let x_90 = Input_Color;
-  Input_1.Color = x_90;
-  let x_94 = Input_1;
-  let x_95 = x_main_struct_PS_Input_vf4_vf2_vf41_(x_94);
-  x_entryPointOutput = x_95;
-  return;
-}
-
-struct main_out {
-  @location(0)
-  x_entryPointOutput_1 : vec4f,
+  let v_7 = Input.UV;
+  return textureSample(g_texture3, g_sampler3, vec3<f32>(v_7.x, v_7.y, 0.5f));
 }
 
 @fragment
-fn main(@builtin(position) Input_Pos_param : vec4f, @location(0) Input_UV_param : vec2f, @location(1) Input_Color_param : vec4f) -> main_out {
-  Input_Pos = Input_Pos_param;
-  Input_UV = Input_UV_param;
-  Input_Color = Input_Color_param;
-  main_1();
-  return main_out(x_entryPointOutput);
+fn main(@builtin(position) v_8 : vec4<f32>, @location(0u) v_9 : vec2<f32>, @location(1u) v_10 : vec4<f32>) -> @location(0u) vec4<f32> {
+  main_inner(v_8, v_9, v_10);
+  return v;
 }

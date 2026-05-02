@@ -1,60 +1,50 @@
+diagnostic(off, derivative_uniformity);
+
+var<private> v : vec4<f32>;
+
+var<private> v_1 : vec4<f32>;
+
 struct VS_INPUT {
-  g_position : vec3f,
-  g_uv : vec2f,
-  g_color : vec4f,
+  g_position : vec3<f32>,
+  g_uv : vec2<f32>,
+  g_color : vec4<f32>,
 }
 
 struct VS_OUTPUT {
-  g_position : vec4f,
-  g_color : vec4f,
+  g_position : vec4<f32>,
+  g_color : vec4<f32>,
 }
 
-var<private> input_g_position : vec3f;
-
-var<private> input_g_uv : vec2f;
-
-var<private> input_g_color : vec4f;
-
-var<private> x_entryPointOutput_g_position : vec4f;
-
-var<private> x_entryPointOutput_g_color : vec4f;
-
-fn x_main_struct_VS_INPUT_vf3_vf2_vf41_(input : ptr<function, VS_INPUT>) -> VS_OUTPUT {
-  var output : VS_OUTPUT;
-  let x_23 = (*(input)).g_position;
-  output.g_position = vec4f(x_23.x, x_23.y, x_23.z, 1.0f);
-  output.g_color = (*(input)).g_color;
-  let x_36 = output;
-  return x_36;
-}
-
-fn main_1() {
-  var input_1 : VS_INPUT;
+fn main_inner(v_2 : vec3<f32>, v_3 : vec2<f32>, v_4 : vec4<f32>) {
+  var input : VS_INPUT;
   var flattenTemp : VS_OUTPUT;
   var param : VS_INPUT;
-  input_1.g_position = input_g_position;
-  input_1.g_uv = input_g_uv;
-  input_1.g_color = input_g_color;
-  param = input_1;
-  let x_56 = x_main_struct_VS_INPUT_vf3_vf2_vf41_(&(param));
-  flattenTemp = x_56;
-  x_entryPointOutput_g_position = flattenTemp.g_position;
-  x_entryPointOutput_g_color = flattenTemp.g_color;
-  return;
+  input.g_position = v_2;
+  input.g_uv = v_3;
+  input.g_color = v_4;
+  param = input;
+  flattenTemp = v_5(&(param));
+  v = flattenTemp.g_position;
+  v_1 = flattenTemp.g_color;
 }
 
-struct main_out {
+fn v_5(input : ptr<function, VS_INPUT>) -> VS_OUTPUT {
+  var output : VS_OUTPUT;
+  let v_6 = (*(input)).g_position;
+  output.g_position = vec4<f32>(v_6.x, v_6.y, v_6.z, 1.0f);
+  output.g_color = (*(input)).g_color;
+  return output;
+}
+
+struct tint_symbol {
   @builtin(position)
-  x_entryPointOutput_g_position_1 : vec4f,
-  @location(0)
-  x_entryPointOutput_g_color_1 : vec4f,
+  m : vec4<f32>,
+  @location(0u)
+  m_1 : vec4<f32>,
 }
 
 @vertex
-fn main(@location(0) input_g_position_param : vec3f, @location(1) input_g_uv_param : vec2f, @location(2) input_g_color_param : vec4f) -> main_out {
-  input_g_position = input_g_position_param;
-  input_g_uv = input_g_uv_param;
-  input_g_color = input_g_color_param;
-  main_1();
-  return main_out(x_entryPointOutput_g_position, x_entryPointOutput_g_color);
+fn main(@location(0u) v_7 : vec3<f32>, @location(1u) v_8 : vec2<f32>, @location(2u) v_9 : vec4<f32>) -> tint_symbol {
+  main_inner(v_7, v_8, v_9);
+  return tint_symbol(v, v_1);
 }

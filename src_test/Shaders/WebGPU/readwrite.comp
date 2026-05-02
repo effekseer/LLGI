@@ -19,7 +19,7 @@ struct read_2 {
   m_1 : array<CS_INPUT>,
 }
 
-@group(2) @binding(0) var<storage, read_write> read_1 : read_2;
+@group(2) @binding(0) var<storage, read> read_1 : read_2;
 
 struct CB {
   offset : f32,

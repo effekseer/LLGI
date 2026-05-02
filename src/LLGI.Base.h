@@ -28,6 +28,7 @@ enum class DeviceType
 	DirectX12,
 	Metal,
 	Vulkan,
+	WebGPU,
 };
 
 enum class ErrorCode

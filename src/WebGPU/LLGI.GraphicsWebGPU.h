@@ -16,11 +16,13 @@ private:
 		renderPassPipelineStates_;
 
 	wgpu::Device device_;
+	wgpu::Instance instance_;
 	wgpu::Queue queue_;
 
 public:
 
 	GraphicsWebGPU(wgpu::Device device);
+	GraphicsWebGPU(wgpu::Device device, wgpu::Instance instance);
 
 	void SetWindowSize(const Vec2I& windowSize) override;
 

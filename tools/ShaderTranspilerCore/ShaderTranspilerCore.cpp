@@ -26,14 +26,11 @@
 #endif
 
 #if (ENABLE_WEBGPU)
-#include "src/tint/api/common/binding_point.h"
-#include "src/tint/lang/wgsl/ast/transform/binding_remapper.h"
-#include "src/tint/lang/wgsl/ast/transform/manager.h"
-#include "src/tint/lang/wgsl/inspector/inspector.h"
 #include <tint/tint.h>
 #endif
 
 #include <iostream>
+#include <sstream>
 
 namespace LLGI
 {
@@ -51,6 +48,48 @@ std::string Replace(std::string target, std::string from_, std::string to_)
 	}
 
 	return target;
+}
+
+std::string NormalizeWGSLForLLGI(std::string code, ShaderStageType shaderStageType)
+{
+	for (uint32_t i = 0; i < TextureSlotMax; i++)
+	{
+		code = Replace(code, "@group(0u) @binding(" + std::to_string(300 + i) + "u)", "@group(0) @binding(" + std::to_string(i) + ")");
+		code = Replace(code, "@group(0) @binding(" + std::to_string(300 + i) + ")", "@group(0) @binding(" + std::to_string(i) + ")");
+
+		const auto storageGroup = shaderStageType == ShaderStageType::Compute ? 2 : 1;
+		code = Replace(code,
+					   "@group(0u) @binding(" + std::to_string(400 + i) + "u)",
+					   "@group(" + std::to_string(storageGroup) + ") @binding(" + std::to_string(i) + ")");
+		code = Replace(code,
+					   "@group(0) @binding(" + std::to_string(400 + i) + ")",
+					   "@group(" + std::to_string(storageGroup) + ") @binding(" + std::to_string(i) + ")");
+
+		code = Replace(code, "@group(0u) @binding(" + std::to_string(100 + i) + "u)", "@group(1) @binding(" + std::to_string(i) + ")");
+		code = Replace(code, "@group(0) @binding(" + std::to_string(100 + i) + ")", "@group(1) @binding(" + std::to_string(i) + ")");
+
+		code = Replace(code, "@group(0u) @binding(" + std::to_string(200 + i) + "u)", "@group(1) @binding(" + std::to_string(i) + ")");
+		code = Replace(code, "@group(0) @binding(" + std::to_string(200 + i) + ")", "@group(1) @binding(" + std::to_string(i) + ")");
+	}
+
+	std::stringstream input(code);
+	std::stringstream output;
+	std::string line;
+	while (std::getline(input, line))
+	{
+		if (line.find(": sampler") != std::string::npos)
+		{
+			for (uint32_t i = 0; i < TextureSlotMax; i++)
+			{
+				line = Replace(line, "@group(0u) @binding(" + std::to_string(i) + "u)", "@group(2) @binding(" + std::to_string(i) + ")");
+				line = Replace(line, "@group(0) @binding(" + std::to_string(i) + ")", "@group(2) @binding(" + std::to_string(i) + ")");
+			}
+		}
+		output << line << "\n";
+	}
+	code = output.str();
+
+	return code;
 }
 
 // https://stackoverflow.com/questions/8518743/get-directory-from-file-path-c/14631366
@@ -418,70 +457,20 @@ SPIRVToWGSLTranspiler::~SPIRVToWGSLTranspiler()
 bool SPIRVToWGSLTranspiler::Transpile(const std::shared_ptr<SPIRV>& spirv, LLGI::ShaderStageType shaderStageType)
 {
 #if (ENABLE_WEBGPU)
-	tint::spirv::reader::Options read_options;
-	auto program = tint::spirv::reader::Read(spirv->GetData(), read_options);
-	tint::inspector::Inspector inspector(program);
-
-	// TODO : tint remapper has many bugs. Inspector and remapper breaks some shaders and export empty code without an error.
-	tint::ast::transform::BindingRemapper::BindingPoints binding_points;
-	auto entry_points = inspector.GetEntryPoints();
-	for (auto& entry_point : entry_points)
-	{
-		auto bindings = inspector.GetResourceBindings(entry_point.name);
-		for (auto& binding : bindings)
-		{
-			tint::ast::transform::BindingPoint src = {binding.bind_group, binding.binding};
-			if (binding.resource_type == tint::inspector::ResourceBinding::ResourceType::kUniformBuffer)
-			{
-				binding_points.emplace(src, tint::ast::transform::BindingPoint{0, binding.binding % 100});
-			}
-			else if (binding.resource_type == tint::inspector::ResourceBinding::ResourceType::kStorageBuffer)
-			{
-				binding_points.emplace(src, tint::ast::transform::BindingPoint{2, binding.binding % 100});
-			}
-			else if (binding.resource_type == tint::inspector::ResourceBinding::ResourceType::kReadOnlyStorageBuffer)
-			{
-				binding_points.emplace(src, tint::ast::transform::BindingPoint{1, binding.binding % 100});
-			}
-			else if (binding.resource_type == tint::inspector::ResourceBinding::ResourceType::kSampler)
-			{
-				binding_points.emplace(src, tint::ast::transform::BindingPoint{4, binding.binding % 100});
-			}
-			else if (binding.resource_type == tint::inspector::ResourceBinding::ResourceType::kSampledTexture)
-			{
-				binding_points.emplace(src, tint::ast::transform::BindingPoint{1, binding.binding % 100});
-			}
-			else
-			{
-				std::cout << "This binding is not supported." << std::endl;
-				std::cout << (int)binding.resource_type << ", " << binding.bind_group << ", " << binding.binding << std::endl;
-				binding_points.emplace(src, tint::ast::transform::BindingPoint{binding.bind_group, binding.binding});
-			}
-		}
-	}
-
-	if (!binding_points.empty())
-	{
-		tint::ast::transform::Manager manager;
-		tint::ast::transform::DataMap inputs;
-		tint::ast::transform::DataMap outputs;
-		inputs.Add<tint::ast::transform::BindingRemapper::Remappings>(
-			std::move(binding_points), tint::ast::transform::BindingRemapper::AccessControls{}, true);
-		manager.Add<tint::ast::transform::BindingRemapper>();
-		program = manager.Run(program, inputs, outputs);
-	}
-
 	tint::wgsl::writer::Options gen_options;
-	auto result = tint::wgsl::writer::Generate(program, gen_options);
-	if (!result)
+	gen_options.allow_non_uniform_derivatives = true;
+	gen_options.allowed_features.features.insert(tint::wgsl::LanguageFeature::kReadonlyAndReadwriteStorageTextures);
+	auto result = tint::SpirvToWgsl(spirv->GetData(), gen_options);
+	if (result != tint::Success)
 	{
-		errorCode_ = result.Failure().reason.str();
+		errorCode_ = result.Failure().reason;
 		return false;
 	}
 
-	code_ = result->wgsl;
+	code_ = NormalizeWGSLForLLGI(result.Get(), shaderStageType);
 	return true;
 #else
+	errorCode_ = "WGSL output requires ShaderTranspilerCore to be built with BUILD_WEBGPU=ON.";
 	return false;
 #endif
 }

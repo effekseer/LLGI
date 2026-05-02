@@ -378,7 +378,7 @@ void main()
 		LLGI::CompilerResult result_ps;
 
 		if (platform->GetDeviceType() == LLGI::DeviceType::Metal || platform->GetDeviceType() == LLGI::DeviceType::DirectX12 ||
-			platform->GetDeviceType() == LLGI::DeviceType::Vulkan)
+			platform->GetDeviceType() == LLGI::DeviceType::Vulkan || platform->GetDeviceType() == LLGI::DeviceType::WebGPU)
 		{
 			auto code_vs = TestHelper::LoadData("simple_constant_rectangle.vert");
 			auto code_ps = TestHelper::LoadData("simple_constant_rectangle.frag");
@@ -681,7 +681,7 @@ void main()
 		LLGI::CompilerResult result_ps;
 
 		if (platform->GetDeviceType() == LLGI::DeviceType::Metal || platform->GetDeviceType() == LLGI::DeviceType::DirectX12 ||
-			platform->GetDeviceType() == LLGI::DeviceType::Vulkan)
+			platform->GetDeviceType() == LLGI::DeviceType::Vulkan || platform->GetDeviceType() == LLGI::DeviceType::WebGPU)
 		{
 			auto code_vs = TestHelper::LoadData("simple_texture_rectangle.vert");
 			auto code_ps = TestHelper::LoadData("simple_texture_rectangle.frag");
