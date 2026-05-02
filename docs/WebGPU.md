@@ -97,6 +97,12 @@ build-webgpu\src_test\Release\LLGI_Test.exe --webgpu --filter=SimpleRender.*
 Some environments need a visible GPU session for Dawn to create a WebGPU device.
 Headless CI may need Dawn-specific setup.
 
+## Browser Smoke Test
+
+The native test path above uses Dawn directly. To compile the WebGPU backend to
+WebAssembly and run it in a real browser WebGPU implementation, use the browser
+test flow in `docs/WebGPU_Browser_Test.md`.
+
 ## Shader Generation
 
 `ShaderTranspiler` can emit WGSL and compiled WGSL blobs for WebGPU tests.

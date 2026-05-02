@@ -1,6 +1,14 @@
-file(GLOB files *.h *.cpp)
+if(BUILD_WEBGPU_BROWSER_TEST)
+  set(files main.cpp TestHelper.cpp TestHelper.h test.h test_webgpu_browser.cpp)
+else()
+  file(GLOB files *.h *.cpp)
+endif()
 
 add_executable(LLGI_Test ${files})
+
+if(BUILD_WEBGPU_BROWSER_TEST AND NOT EMSCRIPTEN)
+  message(FATAL_ERROR "BUILD_WEBGPU_BROWSER_TEST requires an Emscripten CMake toolchain.")
+endif()
 
 if(APPLE)
 
@@ -29,7 +37,17 @@ if(BUILD_VULKAN_COMPILER AND USE_THIRDPARTY_DIRECTORY)
   add_dependencies(LLGI_Test EP_glslang EP_SPIRV-Cross)
 endif()
 
-if(MSVC)
+if(EMSCRIPTEN)
+  set_target_properties(LLGI_Test PROPERTIES SUFFIX ".html")
+  target_link_options(
+    LLGI_Test
+    PRIVATE
+    "--pre-js=${CMAKE_CURRENT_SOURCE_DIR}/browser/pre_webgpu_test.js"
+    "--preload-file=${CMAKE_CURRENT_SOURCE_DIR}/Shaders/WebGPU@/Shaders/WebGPU"
+    "-sALLOW_MEMORY_GROWTH=1"
+    "-sASYNCIFY=1"
+    "-sASSERTIONS=1")
+elseif(MSVC)
   target_link_libraries(LLGI_Test PRIVATE)
 elseif(APPLE)
   target_link_libraries(LLGI_Test PRIVATE)
@@ -39,13 +57,27 @@ else()
                                           X11-xcb)
 endif()
 
-file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/Shaders
-     DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/)
+if(NOT EMSCRIPTEN)
+  file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/Shaders
+       DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/)
+endif()
 
 clang_format(LLGI_Test)
 
-if(MSVC)
+if(EMSCRIPTEN)
+elseif(MSVC)
   target_compile_options(LLGI_Test PRIVATE /W4 /WX /wd4100)
 else()
   target_compile_options(LLGI_Test PRIVATE -Wall -Werror)
+endif()
+
+if(BUILD_WEBGPU_BROWSER_TEST)
+  find_program(NODE_EXE node)
+  if(NODE_EXE)
+    add_test(
+      NAME LLGI_WebGPU_Browser
+      COMMAND
+        ${NODE_EXE} ${CMAKE_CURRENT_SOURCE_DIR}/browser/run_webgpu_browser_test.mjs
+        $<TARGET_FILE:LLGI_Test> --filter=WebGPUBrowser.*)
+  endif()
 endif()

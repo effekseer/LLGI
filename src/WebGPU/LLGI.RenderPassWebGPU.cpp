@@ -4,6 +4,42 @@
 namespace LLGI
 {
 
+void RenderPassWebGPU::RefreshDescriptor()
+{
+	for (int i = 0; i < descriptor_.colorAttachmentCount; i++)
+	{
+		if (GetIsColorCleared())
+		{
+			colorAttachments_[i].loadOp = wgpu::LoadOp::Clear;
+			colorAttachments_[i].storeOp = wgpu::StoreOp::Store;
+			colorAttachments_[i].clearValue = {
+				GetClearColor().R / 255.0, GetClearColor().G / 255.0, GetClearColor().B / 255.0, GetClearColor().A / 255.0};
+		}
+		else
+		{
+			colorAttachments_[i].loadOp = wgpu::LoadOp::Load;
+			colorAttachments_[i].storeOp = wgpu::StoreOp::Store;
+			colorAttachments_[i].clearValue = {0, 0, 0, 1};
+		}
+	}
+
+	if (descriptor_.depthStencilAttachment != nullptr)
+	{
+		if (GetIsDepthCleared())
+		{
+			depthStencilAttachiment_.depthLoadOp = wgpu::LoadOp::Clear;
+			depthStencilAttachiment_.depthStoreOp = wgpu::StoreOp::Store;
+			depthStencilAttachiment_.depthClearValue = 1.0f;
+		}
+		else
+		{
+			depthStencilAttachiment_.depthLoadOp = wgpu::LoadOp::Load;
+			depthStencilAttachiment_.depthStoreOp = wgpu::StoreOp::Store;
+			depthStencilAttachiment_.depthClearValue = 1.0f;
+		}
+	}
+}
+
 bool RenderPassWebGPU::Initialize(
 	Texture** textures, int textureCount, Texture* depthTexture, Texture* resolvedRenderTexture, Texture* resolvedDepthTexture)
 {
@@ -69,20 +105,6 @@ bool RenderPassWebGPU::Initialize(
 	{
 		colorAttachments_[i].view = texturesImpl[i]->GetTextureView();
 
-		if (GetIsColorCleared())
-		{
-			colorAttachments_[i].loadOp = wgpu::LoadOp::Clear;
-			colorAttachments_[i].storeOp = wgpu::StoreOp::Store;
-			colorAttachments_[i].clearValue = {
-				GetClearColor().R / 255.0, GetClearColor().G / 255.0, GetClearColor().B / 255.0, GetClearColor().A / 255.0};
-		}
-		else
-		{
-			colorAttachments_[i].loadOp = wgpu::LoadOp::Load;
-			colorAttachments_[i].storeOp = wgpu::StoreOp::Store;
-			colorAttachments_[i].clearValue = {0, 0, 0, 1};
-		}
-
 		if (resolvedTextureImpl != nullptr)
 		{
 			colorAttachments_[i].resolveTarget = resolvedTextureImpl->GetTextureView();
@@ -93,19 +115,6 @@ bool RenderPassWebGPU::Initialize(
 	if (depthTexture != nullptr)
 	{
 		depthStencilAttachiment_.view = depthTextureImpl->GetTextureView();
-
-		if (GetIsDepthCleared())
-		{
-			depthStencilAttachiment_.depthLoadOp = wgpu::LoadOp::Clear;
-			depthStencilAttachiment_.depthStoreOp = wgpu::StoreOp::Store;
-			depthStencilAttachiment_.depthClearValue = 1.0f;
-		}
-		else
-		{
-			depthStencilAttachiment_.depthLoadOp = wgpu::LoadOp::Load;
-			depthStencilAttachiment_.depthStoreOp = wgpu::StoreOp::Store;
-			depthStencilAttachiment_.depthClearValue = 1.0f;
-		}
 
 		if (depthTextureImpl->GetFormat() == TextureFormatType::D24S8 || depthTextureImpl->GetFormat() == TextureFormatType::D32S8)
 		{
@@ -121,6 +130,8 @@ bool RenderPassWebGPU::Initialize(
 
 		descriptor_.depthStencilAttachment = &depthStencilAttachiment_;
 	}
+
+	RefreshDescriptor();
 
 	return true;
 }

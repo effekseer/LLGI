@@ -40,6 +40,29 @@
 namespace LLGI
 {
 
+#ifdef __EMSCRIPTEN__
+namespace
+{
+class WindowEmscripten : public Window
+{
+	Vec2I windowSize_;
+
+public:
+	explicit WindowEmscripten(Vec2I windowSize) : windowSize_(windowSize) {}
+
+	bool OnNewFrame() override { return true; }
+
+	void* GetNativePtr(int32_t index) override
+	{
+		(void)index;
+		return nullptr;
+	}
+
+	Vec2I GetWindowSize() const override { return windowSize_; }
+};
+} // namespace
+#endif
+
 Window* CreateWindow(const char* title, Vec2I windowSize)
 {
 #ifdef _WIN32
@@ -54,6 +77,9 @@ Window* CreateWindow(const char* title, Vec2I windowSize)
 	{
 		return window;
 	}
+#elif defined(__EMSCRIPTEN__)
+	(void)title;
+	return new WindowEmscripten(windowSize);
 #elif __linux__
 	auto window = new WindowLinux();
 	if (window->Initialize(title, windowSize))

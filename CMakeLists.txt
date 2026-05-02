@@ -5,6 +5,7 @@ project(LLGI)
 
 include(GNUInstallDirs)
 include(ExternalProject)
+include(CTest)
 
 # linux flag
 if(UNIX AND NOT APPLE)
@@ -12,6 +13,11 @@ if(UNIX AND NOT APPLE)
 endif()
 
 option(BUILD_WEBGPU "build webgpu backend" OFF)
+option(BUILD_WEBGPU_BROWSER_TEST
+       "build a WebAssembly browser smoke test for the WebGPU backend" OFF)
+if(BUILD_WEBGPU_BROWSER_TEST AND NOT BUILD_WEBGPU)
+  message(FATAL_ERROR "BUILD_WEBGPU_BROWSER_TEST requires BUILD_WEBGPU=ON.")
+endif()
 set(WEBGPU_DAWN_SOURCE_DIR
     ""
     CACHE PATH "Path to a Dawn source checkout used when BUILD_WEBGPU is ON")
@@ -254,7 +260,7 @@ if(BUILD_VULKAN)
   endif()
 endif()
 
-if(BUILD_WEBGPU)
+if(BUILD_WEBGPU AND NOT EMSCRIPTEN)
   set(DAWN_FETCH_DEPENDENCIES
       OFF
       CACHE BOOL
@@ -293,7 +299,7 @@ endif()
 
 add_subdirectory("src")
 
-if(BUILD_TEST)
+if(BUILD_TEST OR BUILD_WEBGPU_BROWSER_TEST)
   add_subdirectory("src_test")
 endif()
 

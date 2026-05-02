@@ -5,6 +5,21 @@
 #include <iostream>
 #include <string>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+
+EM_JS(void, llgi_report_test_result, (int result, const char* message), {
+	let text = UTF8ToString(message);
+	let status = result === 0 ? 'passed' : 'failed';
+	if (status === 'passed' && Module.llgiLastWebGPUError) {
+		status = 'failed';
+		text = Module.llgiLastWebGPUError;
+	}
+	Module.llgiTestResult = { status: status, message: text };
+	console.log(status === 'passed' ? 'LLGI_TEST_PASS' : 'LLGI_TEST_FAIL', text);
+});
+#endif
+
 #ifdef _WIN32
 #pragma comment(lib, "d3dcompiler.lib")
 
@@ -14,7 +29,7 @@
 
 #endif
 
-#if defined(__linux__) || defined(__APPLE__) || defined(_WIN32)
+#if defined(__linux__) || defined(__APPLE__) || defined(_WIN32) || defined(__EMSCRIPTEN__)
 
 int main(int argc, char* argv[])
 {
@@ -28,6 +43,9 @@ int main(int argc, char* argv[])
 	// make shaders folder path from __FILE__
 	{
 
+#if defined(__EMSCRIPTEN__)
+		TestHelper::SetRoot("/Shaders/WebGPU/");
+#else
 		auto path = std::string(__FILE__);
 #if defined(WIN32)
 		auto pos = path.find_last_of("\\");
@@ -57,6 +75,7 @@ int main(int argc, char* argv[])
 		{
 			TestHelper::SetRoot((path + "/Shaders/WebGPU/").c_str());
 		}
+#endif
 	}
 
 	LLGI::SetLogger([](LLGI::LogType logType, const std::string& message) { std::cerr << message << std::endl; });
@@ -68,6 +87,10 @@ int main(int argc, char* argv[])
 	LLGI::SetLogger(nullptr);
 
 	TestHelper::Dispose();
+
+#ifdef __EMSCRIPTEN__
+	llgi_report_test_result(0, "completed");
+#endif
 
 	return 0;
 }

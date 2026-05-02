@@ -55,6 +55,7 @@ void CommandListWebGPU::End()
 void CommandListWebGPU::BeginRenderPass(RenderPass* renderPass)
 {
 	auto rp = static_cast<RenderPassWebGPU*>(renderPass);
+	rp->RefreshDescriptor();
 	const auto& desc = rp->GetDescriptor();
 
 	renderPassEncorder_ = commandEncorder_.BeginRenderPass(&desc);
@@ -403,10 +404,12 @@ void CommandListWebGPU::CopyBuffer(Buffer* src, Buffer* dst)
 
 void CommandListWebGPU::WaitUntilCompleted()
 {
+#if !defined(__EMSCRIPTEN__)
 	if (device_ != nullptr)
 	{
 		device_.Tick();
 	}
+#endif
 }
 
 } // namespace LLGI

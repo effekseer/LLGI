@@ -17,6 +17,8 @@ public:
 	bool
 	Initialize(Texture** textures, int textureCount, Texture* depthTexture, Texture* resolvedRenderTexture, Texture* resolvedDepthTexture);
 
+	void RefreshDescriptor();
+
 	const wgpu::RenderPassDescriptor& GetDescriptor() const { return descriptor_; }
 };
 
