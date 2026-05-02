@@ -50,6 +50,7 @@ std::string Replace(std::string target, std::string from_, std::string to_)
 	return target;
 }
 
+#if (ENABLE_WEBGPU)
 std::string NormalizeWGSLForLLGI(std::string code, ShaderStageType shaderStageType)
 {
 	for (uint32_t i = 0; i < TextureSlotMax; i++)
@@ -91,6 +92,7 @@ std::string NormalizeWGSLForLLGI(std::string code, ShaderStageType shaderStageTy
 
 	return code;
 }
+#endif
 
 // https://stackoverflow.com/questions/8518743/get-directory-from-file-path-c/14631366
 std::string dirnameOf(const std::string& fname)
