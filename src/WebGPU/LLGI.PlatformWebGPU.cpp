@@ -122,6 +122,9 @@ bool PlatformWebGPU::Initialize(Window* window, bool waitVSync)
 
 #if defined(__EMSCRIPTEN__)
 	wgpu::InstanceDescriptor instanceDescriptor{};
+	static constexpr auto timedWaitAny = wgpu::InstanceFeatureName::TimedWaitAny;
+	instanceDescriptor.requiredFeatureCount = 1;
+	instanceDescriptor.requiredFeatures = &timedWaitAny;
 	instance_ = wgpu::CreateInstance(&instanceDescriptor);
 	if (instance_ == nullptr)
 	{

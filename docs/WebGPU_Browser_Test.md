@@ -1,32 +1,74 @@
 # WebGPU Browser Test
 
-This document describes how to build and run the browser-only WebGPU backend
-tests. These tests compile LLGI to WebAssembly with Emscripten, run it in a real
-Chromium-family browser, and use Emdawnwebgpu to access the browser WebGPU API.
+This document explains how to build and run LLGI's browser-only WebGPU tests.
+The browser test target compiles LLGI to WebAssembly with Emscripten, runs it in
+an installed Chrome or Edge browser, and accesses the browser WebGPU API through
+Emdawnwebgpu.
 
-The native WebGPU path in `docs/WebGPU.md` uses Dawn directly. The browser path
-covered here verifies a separate runtime:
+The native WebGPU path in `docs/WebGPU.md` uses Dawn directly. This document is
+for the browser runtime, which verifies:
 
 - Emscripten compilation and linking
 - Emdawnwebgpu C/C++ bindings
-- browser `navigator.gpu` adapter/device creation
+- browser `navigator.gpu` adapter and device creation
 - WGSL shader module creation
 - render and compute pipeline creation
-- browser canvas surface presentation
 - offscreen render target readback
 - storage buffer compute readback
+- browser canvas surface presentation
 
 ## Requirements
 
 - CMake 3.15 or newer
 - Git
-- Node.js
+- Node.js 22 or newer
 - Emscripten 4.x or newer with `--use-port=emdawnwebgpu`
-- Playwright
-- A WebGPU-capable Chromium, Chrome, or Edge browser
+- An installed WebGPU-capable Chrome or Edge browser
 
-WebGPU requires a secure context. The runner serves the generated files from
-`localhost`; do not open `LLGI_Test.html` directly with `file://`.
+The automated runner does not use Playwright. It starts an installed browser
+directly and controls it through the Chrome DevTools Protocol.
+
+WebGPU also requires a secure context. The runner serves the generated files
+from `127.0.0.1`; do not open `LLGI_Test.html` directly with `file://`.
+
+## Quick Start
+
+From the repository root, after activating emsdk:
+
+```bash
+emcmake cmake -S . -B build-webgpu-browser \
+  -DBUILD_WEBGPU=ON \
+  -DBUILD_WEBGPU_BROWSER_TEST=ON \
+  -DBUILD_TEST=ON
+cmake --build build-webgpu-browser --target LLGI_Test
+node src_test/browser/run_webgpu_browser_test.mjs \
+  build-webgpu-browser/src_test/LLGI_Test.html
+```
+
+PowerShell:
+
+```powershell
+emcmake cmake -S . -B build-webgpu-browser `
+  -DBUILD_WEBGPU=ON `
+  -DBUILD_WEBGPU_BROWSER_TEST=ON `
+  -DBUILD_TEST=ON
+cmake --build build-webgpu-browser --target LLGI_Test
+node src_test/browser/run_webgpu_browser_test.mjs `
+  build-webgpu-browser/src_test/LLGI_Test.html
+```
+
+If Chrome or Edge is installed in a non-standard location, set `CHROME_PATH`
+before running the Node.js runner:
+
+```powershell
+$env:CHROME_PATH = "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
+```
+
+A successful run ends with:
+
+```text
+LLGI_TEST_PASS completed
+```
 
 ## Install Emscripten
 
@@ -59,20 +101,28 @@ emcmake --version
 
 Run the emsdk environment script again whenever you open a new shell.
 
-## Install Playwright
+## Select a Browser
 
-From the LLGI repository root:
+The runner auto-detects common Chrome and Edge installation paths. You can
+override the browser path with `CHROME_PATH`:
 
-```bash
-npm install playwright
-npx playwright install chromium
+```powershell
+$env:CHROME_PATH = "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
 ```
 
-On Linux CI or minimal Linux installations, install browser system dependencies:
+Common Windows paths are:
 
-```bash
-npx playwright install-deps chromium
+```powershell
+$env:CHROME_PATH = "C:\Program Files\Google\Chrome\Application\chrome.exe"
+$env:CHROME_PATH = "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
+$env:CHROME_PATH = "C:\Program Files\Microsoft\Edge\Application\msedge.exe"
+$env:CHROME_PATH = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 ```
+
+On this Windows environment, Playwright's downloaded Chromium/headless shell may
+expose `navigator.gpu` but still return no adapter from
+`navigator.gpu.requestAdapter()`. Use installed Chrome or Edge when running
+these tests.
 
 ## Configure
 
@@ -85,7 +135,7 @@ emcmake cmake -S . -B build-webgpu-browser \
   -DBUILD_TEST=ON
 ```
 
-PowerShell equivalent:
+PowerShell:
 
 ```powershell
 emcmake cmake -S . -B build-webgpu-browser `
@@ -94,7 +144,7 @@ emcmake cmake -S . -B build-webgpu-browser `
   -DBUILD_TEST=ON
 ```
 
-`BUILD_WEBGPU_BROWSER_TEST=ON` requires an Emscripten toolchain and builds a
+`BUILD_WEBGPU_BROWSER_TEST=ON` requires the Emscripten toolchain and builds a
 browser-focused `LLGI_Test.html`. It does not require a native Dawn checkout.
 
 ## Build
@@ -124,9 +174,9 @@ cmake --build build-webgpu-browser --target LLGI_Test
 For CI, cache `EM_CACHE` between runs to avoid rebuilding Emscripten system
 libraries and the Emdawnwebgpu port every time.
 
-## Run Automated Tests
+## Run Tests
 
-Run the Playwright harness from the repository root:
+Run the browser harness from the repository root:
 
 ```bash
 node src_test/browser/run_webgpu_browser_test.mjs \
@@ -142,17 +192,14 @@ node src_test/browser/run_webgpu_browser_test.mjs `
 
 The runner:
 
-- starts a temporary localhost HTTP server
+- starts a temporary `127.0.0.1` HTTP server
 - disables caching for generated `.html`, `.js`, `.wasm`, and `.data` files
-- launches Chromium with WebGPU-friendly flags
+- launches installed Chrome or Edge in headless mode
+- passes WebGPU-friendly browser flags
+- connects to the browser through the Chrome DevTools Protocol
+- forwards browser console and page errors
 - waits for the Emscripten module to report completion
 - exits non-zero on failure
-
-The success log ends with:
-
-```text
-LLGI_TEST_PASS completed
-```
 
 The default filter is:
 
@@ -168,9 +215,10 @@ node src_test/browser/run_webgpu_browser_test.mjs \
   --filter=WebGPUBrowser.ScreenPresentation
 ```
 
-## View in a Browser
+## View a Canvas Test
 
-To see the canvas presentation test, serve the generated files:
+Most tests render offscreen and validate the result through readback. To see the
+visible canvas presentation test, serve the generated files:
 
 ```bash
 cd build-webgpu-browser/src_test
@@ -199,48 +247,34 @@ When Node.js is found during CMake configure, CMake registers:
 ctest --test-dir build-webgpu-browser -R LLGI_WebGPU_Browser --output-on-failure
 ```
 
-The CTest entry expects the `playwright` package to be available to Node.js.
+The CTest entry uses the same Node.js runner. It expects a WebGPU-capable Chrome
+or Edge executable. Set `CHROME_PATH` in the test environment when
+auto-detection is not enough.
 
-## Current Test Cases
+## Test Cases
 
-- `WebGPUBrowser.ComputeCompile`
-  - loads a WGSL compute shader
-  - compiles a compute pipeline
-- `WebGPUBrowser.ComputeDispatch`
-  - uploads structured input data
-  - dispatches a storage-buffer compute shader
-  - copies output to a readback buffer
-  - maps and verifies computed values
-- `WebGPUBrowser.OffscreenRender`
-  - creates an offscreen render texture
-  - loads WGSL vertex/fragment shaders
-  - compiles a render pipeline
-  - draws a rectangle
-- `WebGPUBrowser.RenderReadback`
-  - clears an offscreen render target
-  - copies it to a readback buffer
-  - verifies pixel values
-- `WebGPUBrowser.TextureAndConstantRender`
-  - uploads texture data with `Queue::WriteTexture`
-  - renders with texture and sampler bind groups
-  - renders again with vertex/pixel uniform buffers
-  - reads back pixels and verifies clear color and rendered output
-- `WebGPUBrowser.ScreenPresentation`
-  - creates a browser canvas WebGPU surface
-  - renders through `PlatformWebGPU::GetCurrentScreen`
-  - leaves a visible blue canvas with a colored polygon
+- `WebGPUBrowser.ComputeCompile`: loads a WGSL compute shader and compiles a
+  compute pipeline
+- `WebGPUBrowser.ComputeDispatch`: dispatches a storage-buffer compute shader
+  and verifies mapped readback data
+- `WebGPUBrowser.OffscreenRender`: renders to an offscreen texture
+- `WebGPUBrowser.RenderReadback`: clears an offscreen render target and verifies
+  copied pixel data
+- `WebGPUBrowser.TextureAndConstantRender`: uploads texture and uniform data,
+  renders, and verifies readback pixels
+- `WebGPUBrowser.ScreenPresentation`: renders through
+  `PlatformWebGPU::GetCurrentScreen` to the browser canvas
 
 Browser readback uses Asyncify so C++ test code can wait for `MapAsync` and
 `Queue::OnSubmittedWorkDone` callbacks while the browser event loop continues to
-run.
+run. The browser WebGPU instance enables `TimedWaitAny` because the readback
+paths use timeout-based `Instance::WaitAny` calls.
 
 ## CI Notes
 
 A typical CI flow is:
 
 ```bash
-npm install playwright
-npx playwright install chromium
 emcmake cmake -S . -B build-webgpu-browser \
   -DBUILD_WEBGPU=ON \
   -DBUILD_WEBGPU_BROWSER_TEST=ON \
@@ -250,48 +284,59 @@ node src_test/browser/run_webgpu_browser_test.mjs \
   build-webgpu-browser/src_test/LLGI_Test.html
 ```
 
-The runner passes these Chromium flags:
+The runner passes these browser flags:
 
+- `--headless=new`
 - `--enable-unsafe-webgpu`
 - `--ignore-gpu-blocklist`
-- `--enable-features=Vulkan,UseSkiaRenderer`
-- `--use-vulkan=swiftshader`
+- `--use-angle=d3d11`
 
-These help in headless or GPU-limited environments, but browser policy,
-drivers, or CI sandboxing can still disable WebGPU.
+`--use-angle=d3d11` is important on the tested Windows environment. Vulkan or
+SwiftShader flags can leave `navigator.gpu.requestAdapter()` returning `null`.
 
 ## Troubleshooting
 
 ### `navigator.gpu is not available`
 
-Use `http://localhost` or HTTPS. WebGPU is unavailable from `file://`.
+Use `http://localhost`, `http://127.0.0.1`, or HTTPS. WebGPU is unavailable from
+`file://`.
 
-Also check that the browser supports WebGPU and is not blocked by local GPU
-policy.
+Also check that the selected browser supports WebGPU and is not blocked by local
+GPU policy.
 
-### Playwright fails to launch Chromium
+### `No available adapters`
 
-Install the browser:
-
-```bash
-npx playwright install chromium
-```
-
-If Playwright's downloaded Chromium cannot launch, use an installed browser:
+Use an installed Chrome or Edge browser instead of Playwright's downloaded
+Chromium/headless shell. On Windows:
 
 ```powershell
-$env:CHROME_PATH = "C:\Program Files\Google\Chrome\Application\chrome.exe"
+$env:CHROME_PATH = "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
 node src_test/browser/run_webgpu_browser_test.mjs `
   build-webgpu-browser/src_test/LLGI_Test.html
 ```
 
-Common Windows alternatives:
+The runner uses `--use-angle=d3d11`. Vulkan or SwiftShader flags can leave
+`requestAdapter()` returning `null` on this machine.
+
+### `A WebGPU-capable Chrome or Edge executable is required`
+
+Set `CHROME_PATH` to the browser executable:
 
 ```powershell
 $env:CHROME_PATH = "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
-$env:CHROME_PATH = "C:\Program Files\Microsoft\Edge\Application\msedge.exe"
-$env:CHROME_PATH = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 ```
+
+### `TimedWaitAny not enabled at wgpuCreateInstance`
+
+Rebuild `LLGI_Test` after changing WebGPU source files:
+
+```bash
+cmake --build build-webgpu-browser --target LLGI_Test
+```
+
+The browser path requires `wgpu::InstanceFeatureName::TimedWaitAny` when
+creating the Emscripten WebGPU instance because readback waits use timeout-based
+`Instance::WaitAny`.
 
 ### Emdawnwebgpu port build fails with a cross-drive path error
 
