@@ -53,6 +53,10 @@ int main(int argc, char* argv[])
 			TestHelper::SetRoot((path + "/Shaders/SPIRV/").c_str());
 #endif
 		}
+		else if (args.Device == LLGI::DeviceType::WebGPU)
+		{
+			TestHelper::SetRoot((path + "/Shaders/WebGPU/").c_str());
+		}
 	}
 
 	LLGI::SetLogger([](LLGI::LogType logType, const std::string& message) { std::cerr << message << std::endl; });

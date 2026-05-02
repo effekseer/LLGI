@@ -71,6 +71,7 @@ sudo apt-get install -y \
 | `BUILD_TEST` | `OFF` | Build `LLGI_Test` |
 | `BUILD_EXAMPLE` | `OFF` | Build sample applications |
 | `BUILD_TOOL` | `OFF` | Build `ShaderTranspiler` |
+| `BUILD_WEBGPU` | `OFF` | Enable the experimental WebGPU backend. See [docs/WebGPU.md](docs/WebGPU.md). |
 | `BUILD_VULKAN` | `OFF` (`ON` on Linux) | Enable the Vulkan backend |
 | `BUILD_VULKAN_COMPILER` | `OFF` | Enable Vulkan shader compilation support in `LLGI::CreateCompiler` |
 | `USE_CREATE_COMPILER_FUNCTION` | `ON` | Keep `LLGI::CreateCompiler` enabled |
@@ -139,6 +140,12 @@ cmake --build build
 On Linux, `BUILD_VULKAN` is enabled automatically by the top-level
 `CMakeLists.txt`.
 
+### WebGPU (experimental)
+
+The WebGPU backend uses Dawn and is still experimental. Build instructions,
+Dawn setup, test commands, shader notes, and current limitations are documented
+in [docs/WebGPU.md](docs/WebGPU.md).
+
 ## Install
 
 ```bash
@@ -172,6 +179,7 @@ Examples:
 build\src_test\Release\LLGI_Test.exe
 build\src_test\Release\LLGI_Test.exe --filter=Compile.*
 build\src_test\Release\LLGI_Test.exe --vulkan
+build\src_test\Release\LLGI_Test.exe --webgpu
 ```
 
 If you want Vulkan shader compilation through

@@ -90,6 +90,7 @@ ParsedArgs TestHelper::ParseArg(int argc, char* argv[])
 	ParsedArgs args;
 
 	bool isVulkanMode = false;
+	bool isWebGPUMode = false;
 	std::string filter;
 
 	for (int i = 0; i < argc; i++)
@@ -99,6 +100,10 @@ ParsedArgs TestHelper::ParseArg(int argc, char* argv[])
 		if (v == "--vulkan")
 		{
 			isVulkanMode = true;
+		}
+		else if (v == "--webgpu")
+		{
+			isWebGPUMode = true;
 		}
 		else if (v.find("--filter=") == 0)
 		{
@@ -117,6 +122,10 @@ ParsedArgs TestHelper::ParseArg(int argc, char* argv[])
 	if (isVulkanMode)
 	{
 		args.Device = LLGI::DeviceType::Vulkan;
+	}
+	if (isWebGPUMode)
+	{
+		args.Device = LLGI::DeviceType::WebGPU;
 	}
 
 	return args;
@@ -453,6 +462,10 @@ std::string TestHelper::GetDeviceName(LLGI::DeviceType device)
 	else if (device == LLGI::DeviceType::Vulkan)
 	{
 		return std::string{"Vulkan"};
+	}
+	else if (device == LLGI::DeviceType::WebGPU)
+	{
+		return std::string{"WebGPU"};
 	}
 
 	return std::string{"Unknown"};

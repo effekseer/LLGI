@@ -4,7 +4,11 @@ project(ShaderTranspilerCore)
 add_library(
   ShaderTranspilerCore STATIC ShaderTranspilerCore.cpp ShaderTranspilerCore.h)
 
-target_compile_features(ShaderTranspilerCore PUBLIC cxx_std_17)
+if(BUILD_WEBGPU)
+  target_compile_features(ShaderTranspilerCore PUBLIC cxx_std_20)
+else()
+  target_compile_features(ShaderTranspilerCore PUBLIC cxx_std_17)
+endif()
 target_include_directories(ShaderTranspilerCore
                            PUBLIC ${LLGI_THIRDPARTY_INCLUDES})
 
@@ -29,7 +33,7 @@ if(USE_THIRDPARTY_DIRECTORY)
 endif()
 
 if(MSVC)
-  target_compile_options(ShaderTranspilerCore PRIVATE /W4 /WX /wd4100)
+  target_compile_options(ShaderTranspilerCore PRIVATE /W4 /WX /wd4100 /wd4324)
 else()
   target_compile_options(ShaderTranspilerCore PRIVATE -Wall -Werror)
 endif()
@@ -40,4 +44,9 @@ endif()
 
 if(SPIRVCROSS_WITHOUT_INSTALL)
   target_compile_definitions(ShaderTranspilerCore PRIVATE ENABLE_SPIRVCROSS_WITHOUT_INSTALL)
+endif()
+
+if(BUILD_WEBGPU)
+  target_compile_definitions(ShaderTranspilerCore PRIVATE ENABLE_WEBGPU)
+  target_link_libraries(ShaderTranspilerCore PRIVATE tint_api)
 endif()

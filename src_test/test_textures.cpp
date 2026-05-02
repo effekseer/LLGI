@@ -115,7 +115,7 @@ void test_textures(LLGI::DeviceType deviceType)
 		LLGI::CompilerResult result_ps;
 
 		if (platform->GetDeviceType() == LLGI::DeviceType::Metal || platform->GetDeviceType() == LLGI::DeviceType::DirectX12 ||
-			platform->GetDeviceType() == LLGI::DeviceType::Vulkan)
+			platform->GetDeviceType() == LLGI::DeviceType::Vulkan || platform->GetDeviceType() == LLGI::DeviceType::WebGPU)
 		{
 			auto code_vs = TestHelper::LoadData("simple_texture_rectangle.vert");
 			auto code_ps = TestHelper::LoadData("textures.frag");

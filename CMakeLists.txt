@@ -11,6 +11,14 @@ if(UNIX AND NOT APPLE)
   set(LINUX TRUE)
 endif()
 
+option(BUILD_WEBGPU "build webgpu backend" OFF)
+set(WEBGPU_DAWN_SOURCE_DIR
+    ""
+    CACHE PATH "Path to a Dawn source checkout used when BUILD_WEBGPU is ON")
+option(WEBGPU_DAWN_BUILD_SAMPLES "Build Dawn sample executables" OFF)
+option(WEBGPU_DAWN_FORCE_SYSTEM_COMPONENT_LOAD
+       "Let Dawn load required Windows system components from System32"
+       ON)
 option(BUILD_VULKAN "build vulkan" OFF)
 option(BUILD_VULKAN_COMPILER "build vulkan compiler" OFF)
 option(BUILD_TEST "build test" OFF)
@@ -27,7 +35,7 @@ option(SPIRVCROSS_WITHOUT_INSTALL "Compile with spirv-cross without install"
        OFF)
 option(USE_CREATE_COMPILER_FUNCTION "Whether LLGI::CreateCompiler is used." ON)
 
-if(LINUX)
+if(LINUX AND NOT BUILD_WEBGPU)
   set(BUILD_VULKAN TRUE)
 endif()
 
@@ -243,6 +251,39 @@ if(BUILD_VULKAN)
 
   if(BUILD_VULKAN_COMPILER)
     add_compile_definitions(ENABLE_VULKAN_COMPILER)
+  endif()
+endif()
+
+if(BUILD_WEBGPU)
+  set(DAWN_FETCH_DEPENDENCIES
+      OFF
+      CACHE BOOL
+            "Dawn dependencies should be fetched before configuring LLGI"
+            FORCE)
+  set(DAWN_BUILD_SAMPLES ${WEBGPU_DAWN_BUILD_SAMPLES}
+      CACHE BOOL "Build Dawn samples" FORCE)
+  set(DAWN_FORCE_SYSTEM_COMPONENT_LOAD
+      ${WEBGPU_DAWN_FORCE_SYSTEM_COMPONENT_LOAD}
+      CACHE BOOL "Allow Dawn to load Windows system components from System32"
+      FORCE)
+  set(DAWN_BUILD_TESTS OFF CACHE BOOL "Build Dawn tests" FORCE)
+  set(DAWN_ENABLE_INSTALL OFF CACHE BOOL "Install Dawn targets" FORCE)
+
+  set(LLGI_DAWN_SOURCE_DIR "")
+  if(WEBGPU_DAWN_SOURCE_DIR)
+    set(LLGI_DAWN_SOURCE_DIR "${WEBGPU_DAWN_SOURCE_DIR}")
+  elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/dawn/CMakeLists.txt")
+    set(LLGI_DAWN_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/dawn")
+  endif()
+
+  if(LLGI_DAWN_SOURCE_DIR)
+    add_subdirectory("${LLGI_DAWN_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/dawn"
+                     EXCLUDE_FROM_ALL)
+  else()
+    message(
+      FATAL_ERROR
+        "Dawn source was not found. Run `python scripts/fetch_dawn.py`, add thirdparty/dawn, or set WEBGPU_DAWN_SOURCE_DIR to a prepared Dawn checkout."
+    )
   endif()
 endif()
 

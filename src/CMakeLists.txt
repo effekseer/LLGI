@@ -17,7 +17,7 @@ else()
   list(APPEND files ${files_linux})
 endif()
 
-if(MSVC)
+if(MSVC AND NOT BUILD_WEBGPU)
   file(GLOB files_dx12 DX12/*.h DX12/*.cpp)
   list(APPEND files ${files_dx12})
 endif()
@@ -26,6 +26,12 @@ if(BUILD_VULKAN)
   file(GLOB files_vulkan Vulkan/*.h Vulkan/*.cpp)
   list(APPEND files ${files_vulkan})
   add_definitions(-DENABLE_VULKAN)
+endif()
+
+if(BUILD_WEBGPU)
+  file(GLOB files_webgpu WebGPU/*.h WebGPU/*.cpp)
+  list(APPEND files ${files_webgpu})
+  add_definitions(-DENABLE_WEBGPU)
 endif()
 
 if(APPLE)
@@ -67,10 +73,12 @@ add_library(LLGI STATIC ${files})
 
 file(GLOB LOCAL_HEADERS *.h)
 set_target_properties(LLGI PROPERTIES PUBLIC_HEADER "${LOCAL_HEADERS}")
-if(BUILD_VULKAN)
-target_compile_features(LLGI PUBLIC cxx_std_17)
+if(BUILD_WEBGPU)
+  target_compile_features(LLGI PUBLIC cxx_std_20)
+elseif(BUILD_VULKAN)
+  target_compile_features(LLGI PUBLIC cxx_std_17)
 else()
-target_compile_features(LLGI PUBLIC cxx_std_14)
+  target_compile_features(LLGI PUBLIC cxx_std_14)
 endif()
 
 if(BUILD_VULKAN)
@@ -81,6 +89,16 @@ if(BUILD_VULKAN)
     add_dependencies(LLGI EP_glslang)
   else()
     target_include_directories(LLGI PRIVATE ${Vulkan_INCLUDE_DIRS})
+  endif()
+endif()
+
+if(BUILD_WEBGPU)
+  if(TARGET dawn::webgpu_dawn)
+    target_link_libraries(LLGI PRIVATE dawn::webgpu_dawn)
+  elseif(TARGET webgpu_dawn)
+    target_link_libraries(LLGI PRIVATE webgpu_dawn)
+  else()
+    message(FATAL_ERROR "Dawn targets were not found. Expected dawn::webgpu_dawn or webgpu_dawn.")
   endif()
 endif()
 
@@ -101,19 +119,22 @@ endif()
 # --------------------
 # Install
 
-install(
-  TARGETS LLGI
-  EXPORT LLGI-export
-  INCLUDES
-  DESTINATION include/LLGI
-  PUBLIC_HEADER DESTINATION include/LLGI
-  ARCHIVE DESTINATION lib
-  LIBRARY DESTINATION lib)
+# Because dawn doesn't specify export
+if(NOT BUILD_WEBGPU)
+  install(
+    TARGETS LLGI
+    EXPORT LLGI-export
+    INCLUDES
+    DESTINATION include/LLGI
+    PUBLIC_HEADER DESTINATION include/LLGI
+    ARCHIVE DESTINATION lib
+    LIBRARY DESTINATION lib)
 
-install(
-  EXPORT LLGI-export
-  FILE LLGI-config.cmake
-  DESTINATION lib/cmake
-  EXPORT_LINK_INTERFACE_LIBRARIES)
+  install(
+    EXPORT LLGI-export
+    FILE LLGI-config.cmake
+    DESTINATION lib/cmake
+    EXPORT_LINK_INTERFACE_LIBRARIES)
+endif()
 
 clang_format(LLGI)

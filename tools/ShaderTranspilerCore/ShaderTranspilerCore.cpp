@@ -25,6 +25,13 @@
 #include <spirv_cross/spirv_reflect.hpp>
 #endif
 
+#if (ENABLE_WEBGPU)
+#include <tint/tint.h>
+#endif
+
+#include <iostream>
+#include <sstream>
+
 namespace LLGI
 {
 
@@ -41,6 +48,48 @@ std::string Replace(std::string target, std::string from_, std::string to_)
 	}
 
 	return target;
+}
+
+std::string NormalizeWGSLForLLGI(std::string code, ShaderStageType shaderStageType)
+{
+	for (uint32_t i = 0; i < TextureSlotMax; i++)
+	{
+		code = Replace(code, "@group(0u) @binding(" + std::to_string(300 + i) + "u)", "@group(0) @binding(" + std::to_string(i) + ")");
+		code = Replace(code, "@group(0) @binding(" + std::to_string(300 + i) + ")", "@group(0) @binding(" + std::to_string(i) + ")");
+
+		const auto storageGroup = shaderStageType == ShaderStageType::Compute ? 2 : 1;
+		code = Replace(code,
+					   "@group(0u) @binding(" + std::to_string(400 + i) + "u)",
+					   "@group(" + std::to_string(storageGroup) + ") @binding(" + std::to_string(i) + ")");
+		code = Replace(code,
+					   "@group(0) @binding(" + std::to_string(400 + i) + ")",
+					   "@group(" + std::to_string(storageGroup) + ") @binding(" + std::to_string(i) + ")");
+
+		code = Replace(code, "@group(0u) @binding(" + std::to_string(100 + i) + "u)", "@group(1) @binding(" + std::to_string(i) + ")");
+		code = Replace(code, "@group(0) @binding(" + std::to_string(100 + i) + ")", "@group(1) @binding(" + std::to_string(i) + ")");
+
+		code = Replace(code, "@group(0u) @binding(" + std::to_string(200 + i) + "u)", "@group(1) @binding(" + std::to_string(i) + ")");
+		code = Replace(code, "@group(0) @binding(" + std::to_string(200 + i) + ")", "@group(1) @binding(" + std::to_string(i) + ")");
+	}
+
+	std::stringstream input(code);
+	std::stringstream output;
+	std::string line;
+	while (std::getline(input, line))
+	{
+		if (line.find(": sampler") != std::string::npos)
+		{
+			for (uint32_t i = 0; i < TextureSlotMax; i++)
+			{
+				line = Replace(line, "@group(0u) @binding(" + std::to_string(i) + "u)", "@group(2) @binding(" + std::to_string(i) + ")");
+				line = Replace(line, "@group(0) @binding(" + std::to_string(i) + ")", "@group(2) @binding(" + std::to_string(i) + ")");
+			}
+		}
+		output << line << "\n";
+	}
+	code = output.str();
+
+	return code;
 }
 
 // https://stackoverflow.com/questions/8518743/get-directory-from-file-path-c/14631366
@@ -391,6 +440,41 @@ bool SPIRVToGLSLTranspiler::Transpile(const std::shared_ptr<SPIRV>& spirv, LLGI:
 	return true;
 }
 
+SPIRVToWGSLTranspiler::SPIRVToWGSLTranspiler()
+{
+#if (ENABLE_WEBGPU)
+	tint::Initialize();
+#endif
+}
+
+SPIRVToWGSLTranspiler::~SPIRVToWGSLTranspiler()
+{
+#if (ENABLE_WEBGPU)
+	tint::Shutdown();
+#endif
+}
+
+bool SPIRVToWGSLTranspiler::Transpile(const std::shared_ptr<SPIRV>& spirv, LLGI::ShaderStageType shaderStageType)
+{
+#if (ENABLE_WEBGPU)
+	tint::wgsl::writer::Options gen_options;
+	gen_options.allow_non_uniform_derivatives = true;
+	gen_options.allowed_features.features.insert(tint::wgsl::LanguageFeature::kReadonlyAndReadwriteStorageTextures);
+	auto result = tint::SpirvToWgsl(spirv->GetData(), gen_options);
+	if (result != tint::Success)
+	{
+		errorCode_ = result.Failure().reason;
+		return false;
+	}
+
+	code_ = NormalizeWGSLForLLGI(result.Get(), shaderStageType);
+	return true;
+#else
+	errorCode_ = "WGSL output requires ShaderTranspilerCore to be built with BUILD_WEBGPU=ON.";
+	return false;
+#endif
+}
+
 class ReflectionCompiler : public spirv_cross::Compiler
 {
 public:
@@ -478,7 +562,8 @@ std::shared_ptr<SPIRV> SPIRVGenerator::Generate(const char* path,
 												std::vector<std::string> includeDirs,
 												std::vector<SPIRVGeneratorMacro> macros,
 												ShaderStageType shaderStageType,
-												bool isYInverted)
+												bool isYInverted,
+												bool addBindingOffset)
 {
 	std::string codeStr(code);
 	glslang::TProgram program;
@@ -506,11 +591,19 @@ std::shared_ptr<SPIRV> SPIRVGenerator::Generate(const char* path,
 	}
 
 	shader.setPreamble(macro.c_str());
-	// shader->setAutoMapBindings(true);
-	// shader->setAutoMapLocations(true);
+
+	if (addBindingOffset)
+	{
+		shader.setShiftBinding(glslang::TResourceType::EResSampler, 0);
+		shader.setShiftBinding(glslang::TResourceType::EResTexture, 100);
+		shader.setShiftBinding(glslang::TResourceType::EResImage, 200);
+		shader.setShiftBinding(glslang::TResourceType::EResUbo, 300);
+		shader.setShiftBinding(glslang::TResourceType::EResSsbo, 400);
+		shader.setShiftBinding(glslang::TResourceType::EResUav, 500);
+	}
 
 	shader.setStrings(shaderStrings, 1);
-	const auto messages = static_cast<EShMessages>(EShMsgSpvRules | EShMsgVulkanRules | EShMsgReadHlsl | EShOptFull);
+	const auto messages = static_cast<EShMessages>(EShMsgSpvRules | EShMsgVulkanRules | EShMsgReadHlsl | EShOptFull | EShMsgHlslOffsets);
 
 	DirStackFileIncluder includer(onLoad_);
 	includer.pushExternalLocalDirectory(dirnameOf(path));
@@ -531,6 +624,14 @@ std::shared_ptr<SPIRV> SPIRVGenerator::Generate(const char* path,
 	if (!program.link(messages))
 	{
 		return std::make_shared<SPIRV>(program.getInfoLog());
+	}
+
+	if (addBindingOffset)
+	{
+		if (!program.mapIO())
+		{
+			return std::make_shared<SPIRV>(program.getInfoLog());
+		}
 	}
 
 	std::vector<unsigned int> spirv;
