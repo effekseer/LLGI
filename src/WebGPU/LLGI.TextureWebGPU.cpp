@@ -4,6 +4,10 @@
 #include <cstring>
 #include <thread>
 
+#if defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+#endif
+
 namespace LLGI
 {
 
@@ -208,7 +212,11 @@ bool TextureWebGPU::GetData(std::vector<uint8_t>& data)
 	auto future = readbackBuffer.MapAsync(wgpu::MapMode::Read,
 										  0,
 										  bufferSize,
+#if defined(__EMSCRIPTEN__)
+										  wgpu::CallbackMode::AllowSpontaneous,
+#else
 										  instance_ != nullptr ? wgpu::CallbackMode::WaitAnyOnly : wgpu::CallbackMode::AllowProcessEvents,
+#endif
 										  [&completed, &succeeded](wgpu::MapAsyncStatus status, wgpu::StringView) {
 											  succeeded = status == wgpu::MapAsyncStatus::Success;
 											  completed = true;
@@ -220,6 +228,17 @@ bool TextureWebGPU::GetData(std::vector<uint8_t>& data)
 	}
 	else
 	{
+#if defined(__EMSCRIPTEN__)
+		const double waitStart = emscripten_get_now();
+		while (!completed)
+		{
+			emscripten_sleep(1);
+			if (emscripten_get_now() - waitStart > 5000.0)
+			{
+				break;
+			}
+		}
+#else
 		const auto waitStart = std::chrono::steady_clock::now();
 		while (!completed)
 		{
@@ -230,6 +249,7 @@ bool TextureWebGPU::GetData(std::vector<uint8_t>& data)
 			}
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
+#endif
 	}
 
 	if (!succeeded)

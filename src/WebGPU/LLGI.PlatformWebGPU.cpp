@@ -57,11 +57,13 @@ PlatformWebGPU::~PlatformWebGPU() { ResetCurrentScreen(); }
 
 void PlatformWebGPU::ResetCurrentScreen()
 {
+#if !defined(__EMSCRIPTEN__)
 	if (surface_ != nullptr && surfaceTexture_.texture != nullptr && isPresentRequested_ && !hasPresentedCurrentSurface_)
 	{
 		surface_.Present();
 		hasPresentedCurrentSurface_ = true;
 	}
+#endif
 
 	SafeRelease(currentScreenRenderPass_);
 	SafeRelease(currentScreenTexture_);
@@ -72,10 +74,16 @@ void PlatformWebGPU::ResetCurrentScreen()
 
 bool PlatformWebGPU::ConfigureSurface(const Vec2I& windowSize)
 {
-	if (surface_ == nullptr || adapter_ == nullptr || device_ == nullptr || windowSize.X <= 0 || windowSize.Y <= 0)
+	if (surface_ == nullptr || device_ == nullptr || windowSize.X <= 0 || windowSize.Y <= 0)
 	{
 		return false;
 	}
+#if !defined(__EMSCRIPTEN__)
+	if (adapter_ == nullptr)
+	{
+		return false;
+	}
+#endif
 
 	wgpu::SurfaceCapabilities capabilities{};
 	surface_.GetCapabilities(adapter_, &capabilities);
@@ -105,12 +113,50 @@ bool PlatformWebGPU::Initialize(Window* window, bool waitVSync)
 {
 	waitVSync_ = waitVSync;
 	window_ = window;
+#if !defined(__EMSCRIPTEN__)
 	if (window_ == nullptr)
 	{
 		return false;
 	}
+#endif
 
-#if defined(_WIN32) && !defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__)
+	wgpu::InstanceDescriptor instanceDescriptor{};
+	instance_ = wgpu::CreateInstance(&instanceDescriptor);
+	if (instance_ == nullptr)
+	{
+		Log(LogType::Error, "Failed to create browser WebGPU instance.");
+		return false;
+	}
+
+	auto device = wgpu::Device::Acquire(emscripten_webgpu_get_device());
+	if (device == nullptr)
+	{
+		Log(LogType::Error, "Failed to get preinitialized browser WebGPU device.");
+		return false;
+	}
+
+	device_ = device;
+	if (window_ != nullptr)
+	{
+		windowSize_ = window_->GetWindowSize();
+
+		wgpu::EmscriptenSurfaceSourceCanvasHTMLSelector canvasSource{};
+		canvasSource.selector = "#canvas";
+
+		wgpu::SurfaceDescriptor surfaceDescriptor{};
+		surfaceDescriptor.nextInChain = &canvasSource;
+		surface_ = instance_.CreateSurface(&surfaceDescriptor);
+		if (surface_ == nullptr)
+		{
+			Log(LogType::Error, "Failed to create browser WebGPU canvas surface.");
+			return false;
+		}
+
+		return ConfigureSurface(windowSize_);
+	}
+	return true;
+#elif defined(_WIN32)
 	wgpu::InstanceDescriptor instanceDescriptor{};
 	static constexpr auto timedWaitAny = wgpu::InstanceFeatureName::TimedWaitAny;
 	instanceDescriptor.requiredFeatureCount = 1;

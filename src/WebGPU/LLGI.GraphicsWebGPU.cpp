@@ -13,6 +13,10 @@
 #include <cstring>
 #include <thread>
 
+#if defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+#endif
+
 namespace LLGI
 {
 
@@ -35,6 +39,34 @@ uint32_t GetFormatBytesPerPixel(TextureFormatType format)
 		return 4;
 	}
 }
+
+#if defined(__EMSCRIPTEN__)
+void WaitForQueue(wgpu::Queue& queue)
+{
+	bool completed = false;
+	bool succeeded = false;
+	queue.OnSubmittedWorkDone(wgpu::CallbackMode::AllowSpontaneous,
+							  [&completed, &succeeded](wgpu::QueueWorkDoneStatus status, wgpu::StringView) {
+								  succeeded = status == wgpu::QueueWorkDoneStatus::Success;
+								  completed = true;
+							  });
+
+	const double waitStart = emscripten_get_now();
+	while (!completed)
+	{
+		emscripten_sleep(1);
+		if (emscripten_get_now() - waitStart > 5000.0)
+		{
+			break;
+		}
+	}
+
+	if (!succeeded)
+	{
+		Log(LogType::Warning, "Timed out or failed while waiting for WebGPU queue completion.");
+	}
+}
+#endif
 } // namespace
 
 class SingleFrameMemoryPoolWebGPU : public SingleFrameMemoryPool
@@ -86,10 +118,17 @@ void GraphicsWebGPU::Execute(CommandList* commandList)
 
 void GraphicsWebGPU::WaitFinish()
 {
+#if defined(__EMSCRIPTEN__)
+	if (queue_ != nullptr)
+	{
+		WaitForQueue(queue_);
+	}
+#else
 	if (device_ != nullptr)
 	{
 		device_.Tick();
 	}
+#endif
 }
 
 Buffer* GraphicsWebGPU::CreateBuffer(BufferUsageType usage, int32_t size)
@@ -273,13 +312,18 @@ std::vector<uint8_t> GraphicsWebGPU::CaptureRenderTarget(Texture* renderTarget)
 
 	auto commandBuffer = encoder.Finish();
 	queue_.Submit(1, &commandBuffer);
+	WaitFinish();
 
 	bool completed = false;
 	bool succeeded = false;
 	auto future = readbackBuffer.MapAsync(wgpu::MapMode::Read,
 										  0,
 										  bufferSize,
+#if defined(__EMSCRIPTEN__)
+										  wgpu::CallbackMode::AllowSpontaneous,
+#else
 										  instance_ != nullptr ? wgpu::CallbackMode::WaitAnyOnly : wgpu::CallbackMode::AllowProcessEvents,
+#endif
 										  [&completed, &succeeded](wgpu::MapAsyncStatus status, wgpu::StringView) {
 											  succeeded = status == wgpu::MapAsyncStatus::Success;
 											  completed = true;
@@ -291,6 +335,17 @@ std::vector<uint8_t> GraphicsWebGPU::CaptureRenderTarget(Texture* renderTarget)
 	}
 	else
 	{
+#if defined(__EMSCRIPTEN__)
+		const double waitStart = emscripten_get_now();
+		while (!completed)
+		{
+			emscripten_sleep(1);
+			if (emscripten_get_now() - waitStart > 5000.0)
+			{
+				break;
+			}
+		}
+#else
 		const auto waitStart = std::chrono::steady_clock::now();
 		while (!completed)
 		{
@@ -301,6 +356,7 @@ std::vector<uint8_t> GraphicsWebGPU::CaptureRenderTarget(Texture* renderTarget)
 			}
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
+#endif
 	}
 
 	std::vector<uint8_t> ret(static_cast<size_t>(unalignedBytesPerRow) * static_cast<size_t>(size.Y));

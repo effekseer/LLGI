@@ -3,6 +3,10 @@
 #include <chrono>
 #include <thread>
 
+#if defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+#endif
+
 namespace LLGI
 {
 
@@ -72,7 +76,11 @@ void* BufferWebGPU::Lock(int32_t offset, int32_t size)
 		auto future = buffer_.MapAsync(wgpu::MapMode::Read,
 									   offset,
 									   size,
+#if defined(__EMSCRIPTEN__)
+									   wgpu::CallbackMode::AllowSpontaneous,
+#else
 									   instance_ != nullptr ? wgpu::CallbackMode::WaitAnyOnly : wgpu::CallbackMode::AllowProcessEvents,
+#endif
 									   [&completed, &succeeded](wgpu::MapAsyncStatus status, wgpu::StringView) {
 										   succeeded = status == wgpu::MapAsyncStatus::Success;
 										   completed = true;
@@ -84,6 +92,17 @@ void* BufferWebGPU::Lock(int32_t offset, int32_t size)
 		}
 		else
 		{
+#if defined(__EMSCRIPTEN__)
+			const double waitStart = emscripten_get_now();
+			while (!completed)
+			{
+				emscripten_sleep(1);
+				if (emscripten_get_now() - waitStart > 5000.0)
+				{
+					break;
+				}
+			}
+#else
 			const auto waitStart = std::chrono::steady_clock::now();
 			while (!completed)
 			{
@@ -94,6 +113,7 @@ void* BufferWebGPU::Lock(int32_t offset, int32_t size)
 				}
 				std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			}
+#endif
 		}
 
 		return succeeded ? const_cast<void*>(buffer_.GetConstMappedRange(offset, size)) : nullptr;

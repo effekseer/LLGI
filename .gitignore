@@ -34,7 +34,9 @@
 /msvc/*.user
 **/Debug
 /build
+/build-webgpu-browser/
 /build_clangformat
 /thirdparty/dawn/
+/node_modules/
 
 .DS_Store
