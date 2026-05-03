@@ -13,7 +13,9 @@ class CommandListWebGPU : public CommandList
 	wgpu::CommandEncoder commandEncorder_;
 	wgpu::RenderPassEncoder renderPassEncorder_;
 	wgpu::ComputePassEncoder computePassEncorder_;
-	wgpu::Sampler samplers_[2][2];
+	wgpu::Sampler samplers_[3][2];
+	wgpu::Texture fallbackTexture_;
+	wgpu::TextureView fallbackTextureView_;
 
 public:
 	CommandListWebGPU(wgpu::Device device);

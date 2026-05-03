@@ -1,10 +1,93 @@
 #include "LLGI.PipelineStateWebGPU.h"
 #include "LLGI.RenderPassPipelineStateWebGPU.h"
-#include "LLGI.ShaderWebGPU.h"
+#include <algorithm>
+#include <array>
 #include <limits>
 
 namespace LLGI
 {
+namespace
+{
+bool BuildBindGroupLayoutEntry(const ShaderBindingWebGPU& binding, wgpu::ShaderStage visibility, wgpu::BindGroupLayoutEntry& entry)
+{
+	entry = {};
+	entry.binding = binding.Binding;
+	entry.visibility = visibility;
+
+	switch (binding.ResourceType)
+	{
+	case ShaderBindingResourceTypeWebGPU::UniformBuffer:
+		entry.buffer.type = wgpu::BufferBindingType::Uniform;
+		entry.buffer.hasDynamicOffset = false;
+		entry.buffer.minBindingSize = 0;
+		return true;
+	case ShaderBindingResourceTypeWebGPU::StorageBuffer:
+		entry.buffer.type = wgpu::BufferBindingType::Storage;
+		entry.buffer.hasDynamicOffset = false;
+		entry.buffer.minBindingSize = 0;
+		return true;
+	case ShaderBindingResourceTypeWebGPU::Texture:
+		entry.texture.sampleType = wgpu::TextureSampleType::Float;
+		entry.texture.viewDimension = wgpu::TextureViewDimension::e2D;
+		entry.texture.multisampled = false;
+		return true;
+	case ShaderBindingResourceTypeWebGPU::Sampler:
+		entry.sampler.type = wgpu::SamplerBindingType::Filtering;
+		return true;
+	default:
+		return false;
+	}
+}
+
+bool ContainsBinding(const std::vector<ShaderBindingWebGPU>& bindings, const ShaderBindingWebGPU& binding)
+{
+	for (const auto& existingBinding : bindings)
+	{
+		if (existingBinding.Group == binding.Group && existingBinding.Binding == binding.Binding && existingBinding.ResourceType == binding.ResourceType)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+wgpu::PipelineLayout CreatePipelineLayout(wgpu::Device& device,
+										  const std::vector<ShaderBindingWebGPU>& bindings,
+										  wgpu::ShaderStage visibility,
+										  std::array<wgpu::BindGroupLayout, 3>& bindGroupLayouts)
+{
+	std::array<std::vector<wgpu::BindGroupLayoutEntry>, 3> bindGroupLayoutEntries;
+	uint32_t bindGroupLayoutCount = 0;
+	for (const auto& binding : bindings)
+	{
+		if (binding.Group >= bindGroupLayoutEntries.size())
+		{
+			continue;
+		}
+
+		wgpu::BindGroupLayoutEntry entry{};
+		if (BuildBindGroupLayoutEntry(binding, visibility, entry))
+		{
+			bindGroupLayoutEntries[binding.Group].push_back(entry);
+			bindGroupLayoutCount = std::max(bindGroupLayoutCount, binding.Group + 1);
+		}
+	}
+
+	for (uint32_t i = 0; i < bindGroupLayoutCount; i++)
+	{
+		wgpu::BindGroupLayoutDescriptor bindGroupLayoutDesc{};
+		bindGroupLayoutDesc.entryCount = static_cast<uint32_t>(bindGroupLayoutEntries[i].size());
+		bindGroupLayoutDesc.entries = bindGroupLayoutEntries[i].data();
+		bindGroupLayouts[i] = device.CreateBindGroupLayout(&bindGroupLayoutDesc);
+	}
+
+	wgpu::PipelineLayoutDescriptor pipelineLayoutDesc{};
+	pipelineLayoutDesc.bindGroupLayoutCount = bindGroupLayoutCount;
+	pipelineLayoutDesc.bindGroupLayouts = bindGroupLayouts.data();
+	return device.CreatePipelineLayout(&pipelineLayoutDesc);
+}
+} // namespace
 
 PipelineStateWebGPU::PipelineStateWebGPU(wgpu::Device device) : device_(device) { shaders_.fill(nullptr); }
 
@@ -23,14 +106,75 @@ void PipelineStateWebGPU::SetShader(ShaderStageType stage, Shader* shader)
 	shaders_[static_cast<int>(stage)] = shader;
 }
 
+bool PipelineStateWebGPU::HasBinding(uint32_t group, uint32_t binding) const
+{
+	if (!hasBindingReflection_)
+	{
+		return true;
+	}
+
+	for (const auto& b : bindings_)
+	{
+		if (b.Group == group && b.Binding == binding)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool PipelineStateWebGPU::HasBinding(uint32_t group, uint32_t binding, ShaderBindingResourceTypeWebGPU resourceType) const
+{
+	if (!hasBindingReflection_)
+	{
+		return true;
+	}
+
+	for (const auto& b : bindings_)
+	{
+		if (b.Group == group && b.Binding == binding && (b.ResourceType == resourceType || b.ResourceType == ShaderBindingResourceTypeWebGPU::Unknown))
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
 bool PipelineStateWebGPU::Compile()
 {
+	bindings_.clear();
+	hasBindingReflection_ = false;
+	for (auto shader : shaders_)
+	{
+		auto shaderWebGPU = static_cast<ShaderWebGPU*>(shader);
+		if (shaderWebGPU == nullptr || !shaderWebGPU->HasBindingReflection())
+		{
+			continue;
+		}
+
+		hasBindingReflection_ = true;
+		for (const auto& reflectedBinding : shaderWebGPU->GetBindings())
+		{
+			if (!ContainsBinding(bindings_, reflectedBinding))
+			{
+				bindings_.push_back(reflectedBinding);
+			}
+		}
+	}
+
 	const char* entryPointName = "main";
 	auto computeShader = static_cast<ShaderWebGPU*>(shaders_[static_cast<int>(ShaderStageType::Compute)]);
 	if (computeShader != nullptr)
 	{
 		wgpu::ComputePipelineDescriptor desc{};
 		desc.layout = nullptr;
+		if (hasBindingReflection_)
+		{
+			pipelineLayout_ = CreatePipelineLayout(device_, bindings_, wgpu::ShaderStage::Compute, bindGroupLayouts_);
+			desc.layout = pipelineLayout_;
+		}
 		desc.compute.module = computeShader->GetShaderModule();
 		desc.compute.entryPoint = entryPointName;
 		computePipeline_ = device_.CreateComputePipeline(&desc);
@@ -41,12 +185,17 @@ bool PipelineStateWebGPU::Compile()
 
 	desc.primitive.topology = Convert(Topology);
 	desc.primitive.stripIndexFormat = wgpu::IndexFormat::Undefined; // is it correct?
-	desc.primitive.frontFace = wgpu::FrontFace::CW;
+	desc.primitive.frontFace = wgpu::FrontFace::CCW;
 	desc.primitive.cullMode = Convert(Culling);
 	desc.multisample.count = static_cast<uint32_t>(renderPassPipelineState_->Key.SamplingCount);
 	desc.multisample.mask = std::numeric_limits<int32_t>::max();
 	desc.multisample.alphaToCoverageEnabled = false;
 	desc.layout = nullptr; // is it correct?
+	if (hasBindingReflection_)
+	{
+		pipelineLayout_ = CreatePipelineLayout(device_, bindings_, wgpu::ShaderStage::Vertex | wgpu::ShaderStage::Fragment, bindGroupLayouts_);
+		desc.layout = pipelineLayout_;
+	}
 
 	auto vertexShader = static_cast<ShaderWebGPU*>(shaders_[static_cast<int>(ShaderStageType::Vertex)]);
 
@@ -72,7 +221,7 @@ bool PipelineStateWebGPU::Compile()
 		attributes[i].shaderLocation = i;
 		offset += GetSize(VertexLayouts[i]);
 	}
-	bufferLayouts[0].arrayStride = offset;
+	bufferLayouts[0].arrayStride = VertexBufferStride > 0 ? VertexBufferStride : offset;
 
 	auto pixelShader = static_cast<ShaderWebGPU*>(shaders_[static_cast<int>(ShaderStageType::Pixel)]);
 

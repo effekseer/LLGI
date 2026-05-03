@@ -42,6 +42,11 @@ def main():
         action="store_true",
         help="Only clone/update Dawn; do not run Dawn dependency fetch.",
     )
+    parser.add_argument(
+        "--shallow-dependencies",
+        action="store_true",
+        help="Allow Dawn's dependency fetch script to use shallow clones. By default, dependencies are fetched with --no-shallow for broader Git compatibility.",
+    )
     args = parser.parse_args()
 
     dawn_dir = os.path.abspath(args.directory)
@@ -70,7 +75,11 @@ def main():
                 file=sys.stderr,
             )
             return 1
-        run([sys.executable, dependency_script], cwd=dawn_dir)
+
+        dependency_args = [sys.executable, dependency_script]
+        if not args.shallow_dependencies:
+            dependency_args.append("--no-shallow")
+        run(dependency_args, cwd=dawn_dir)
 
     print(f"Dawn is ready: {dawn_dir}")
     return 0

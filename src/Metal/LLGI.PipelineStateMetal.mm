@@ -92,7 +92,8 @@ bool PipelineStateMetal::CreateRenderPipelineState(PipelineState* self, Graphics
 
 		vertexDescriptor.layouts[VertexBufferIndex].stepRate = 1;
 		vertexDescriptor.layouts[VertexBufferIndex].stepFunction = MTLVertexStepFunctionPerVertex;
-		vertexDescriptor.layouts[VertexBufferIndex].stride = vertexOffset;
+		vertexDescriptor.layouts[VertexBufferIndex].stride =
+			pipstate->VertexBufferStride > 0 ? pipstate->VertexBufferStride : vertexOffset;
 
 		pipelineStateDescriptor_.vertexDescriptor = vertexDescriptor;
 

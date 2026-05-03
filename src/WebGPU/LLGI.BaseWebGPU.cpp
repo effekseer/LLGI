@@ -143,8 +143,8 @@ wgpu::VertexFormat Convert(VertexLayoutFormat format)
 	if (format == VertexLayoutFormat::R32G32B32_FLOAT)
 		return wgpu::VertexFormat::Float32x3;
 
-	if (format == VertexLayoutFormat::R32G32B32_FLOAT)
-		return wgpu::VertexFormat::Float32x3;
+	if (format == VertexLayoutFormat::R32G32B32A32_FLOAT)
+		return wgpu::VertexFormat::Float32x4;
 
 	if (format == VertexLayoutFormat::R8G8B8A8_UNORM)
 		return wgpu::VertexFormat::Unorm8x4;

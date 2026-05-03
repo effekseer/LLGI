@@ -11,7 +11,31 @@ namespace LLGI
 
 CommandListWebGPU::CommandListWebGPU(wgpu::Device device) : device_(device)
 {
-	for (int w = 0; w < 2; w++)
+	wgpu::TextureDescriptor fallbackTextureDesc{};
+	fallbackTextureDesc.usage = wgpu::TextureUsage::TextureBinding | wgpu::TextureUsage::CopyDst;
+	fallbackTextureDesc.dimension = wgpu::TextureDimension::e2D;
+	fallbackTextureDesc.format = wgpu::TextureFormat::RGBA8Unorm;
+	fallbackTextureDesc.mipLevelCount = 1;
+	fallbackTextureDesc.sampleCount = 1;
+	fallbackTextureDesc.size.width = 1;
+	fallbackTextureDesc.size.height = 1;
+	fallbackTextureDesc.size.depthOrArrayLayers = 1;
+	fallbackTexture_ = device_.CreateTexture(&fallbackTextureDesc);
+	fallbackTextureView_ = fallbackTexture_.CreateView();
+
+	const uint8_t fallbackTexel[4] = {255, 255, 255, 255};
+	wgpu::TexelCopyTextureInfo fallbackDst{};
+	fallbackDst.texture = fallbackTexture_;
+	fallbackDst.aspect = wgpu::TextureAspect::All;
+	wgpu::TexelCopyBufferLayout fallbackLayout{};
+	fallbackLayout.bytesPerRow = 4;
+	wgpu::Extent3D fallbackExtent{};
+	fallbackExtent.width = 1;
+	fallbackExtent.height = 1;
+	fallbackExtent.depthOrArrayLayers = 1;
+	device_.GetQueue().WriteTexture(&fallbackDst, fallbackTexel, sizeof(fallbackTexel), &fallbackLayout, &fallbackExtent);
+
+	for (int w = 0; w < 3; w++)
 	{
 		for (int f = 0; f < 2; f++)
 		{
@@ -19,14 +43,18 @@ CommandListWebGPU::CommandListWebGPU(wgpu::Device device) : device_(device)
 			filters[0] = wgpu::FilterMode::Nearest;
 			filters[1] = wgpu::FilterMode::Linear;
 
-			std::array<wgpu::AddressMode, 2> am;
+			std::array<wgpu::AddressMode, 3> am;
 			am[0] = wgpu::AddressMode::ClampToEdge;
 			am[1] = wgpu::AddressMode::Repeat;
+			am[2] = wgpu::AddressMode::MirrorRepeat;
 
 			wgpu::SamplerDescriptor samplerDesc;
 
 			samplerDesc.magFilter = filters[f];
 			samplerDesc.minFilter = filters[f];
+			samplerDesc.mipmapFilter = filters[f] == wgpu::FilterMode::Linear ? wgpu::MipmapFilterMode::Linear : wgpu::MipmapFilterMode::Nearest;
+			samplerDesc.lodMinClamp = 0.0f;
+			samplerDesc.lodMaxClamp = 32.0f;
 			samplerDesc.maxAnisotropy = 1;
 			samplerDesc.addressModeU = am[w];
 			samplerDesc.addressModeV = am[w];
@@ -54,6 +82,8 @@ void CommandListWebGPU::End()
 
 void CommandListWebGPU::BeginRenderPass(RenderPass* renderPass)
 {
+	EndComputePass();
+
 	auto rp = static_cast<RenderPassWebGPU*>(renderPass);
 	rp->RefreshDescriptor();
 	const auto& desc = rp->GetDescriptor();
@@ -76,6 +106,11 @@ void CommandListWebGPU::EndRenderPass()
 
 void CommandListWebGPU::BeginComputePass()
 {
+	if (computePassEncorder_ != nullptr)
+	{
+		return;
+	}
+
 	wgpu::ComputePassDescriptor desc{};
 	computePassEncorder_ = commandEncorder_.BeginComputePass(&desc);
 }
@@ -137,6 +172,10 @@ void CommandListWebGPU::Draw(int32_t primitiveCount, int32_t instanceCount)
 		{
 			continue;
 		}
+		if (!pip->HasBinding(0, static_cast<uint32_t>(unit_ind), ShaderBindingResourceTypeWebGPU::UniformBuffer))
+		{
+			continue;
+		}
 
 		wgpu::BindGroupEntry entry = {};
 		entry.binding = static_cast<uint32_t>(unit_ind);
@@ -161,7 +200,7 @@ void CommandListWebGPU::Draw(int32_t primitiveCount, int32_t instanceCount)
 
 	for (int unit_ind = 0; unit_ind < static_cast<int32_t>(currentTextures_.size()); unit_ind++)
 	{
-		if (currentTextures_[unit_ind].texture == nullptr)
+		if (!pip->HasBinding(1, static_cast<uint32_t>(unit_ind), ShaderBindingResourceTypeWebGPU::Texture))
 			continue;
 		auto texture = static_cast<TextureWebGPU*>(currentTextures_[unit_ind].texture);
 		auto wm = (int32_t)currentTextures_[unit_ind].wrapMode;
@@ -169,12 +208,16 @@ void CommandListWebGPU::Draw(int32_t primitiveCount, int32_t instanceCount)
 
 		wgpu::BindGroupEntry textureEntry = {};
 		textureEntry.binding = unit_ind;
-		textureEntry.textureView = texture->GetTextureView();
+		textureEntry.textureView = texture != nullptr ? texture->GetTextureView() : fallbackTextureView_;
 		textureGroupEntries.push_back(textureEntry);
 
 		wgpu::BindGroupEntry samplerEntry = {};
-		if (!BitwiseContains(texture->GetParameter().Usage, TextureUsageType::Storage))
+		if (texture == nullptr || !BitwiseContains(texture->GetParameter().Usage, TextureUsageType::Storage))
 		{
+			if (!pip->HasBinding(2, static_cast<uint32_t>(unit_ind), ShaderBindingResourceTypeWebGPU::Sampler))
+			{
+				continue;
+			}
 			samplerEntry.binding = unit_ind;
 			samplerEntry.sampler = samplers_[wm][mm];
 			samplerGroupEntries.push_back(samplerEntry);
@@ -184,6 +227,10 @@ void CommandListWebGPU::Draw(int32_t primitiveCount, int32_t instanceCount)
 	for (int unit_ind = 0; unit_ind < static_cast<int32_t>(computeBuffers_.size()); unit_ind++)
 	{
 		if (computeBuffers_[unit_ind].computeBuffer == nullptr)
+		{
+			continue;
+		}
+		if (!pip->HasBinding(1, static_cast<uint32_t>(unit_ind), ShaderBindingResourceTypeWebGPU::StorageBuffer))
 		{
 			continue;
 		}
@@ -246,9 +293,14 @@ void CommandListWebGPU::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ,
 	bool isPipDirtied = false;
 	GetCurrentPipelineState(bpip, isPipDirtied);
 	auto pip = static_cast<PipelineStateWebGPU*>(bpip);
-	if (pip == nullptr || computePassEncorder_ == nullptr)
+	if (pip == nullptr)
 	{
 		return;
+	}
+
+	if (computePassEncorder_ == nullptr)
+	{
+		BeginComputePass();
 	}
 
 	computePassEncorder_.SetPipeline(pip->GetComputePipeline());
@@ -258,6 +310,10 @@ void CommandListWebGPU::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ,
 	{
 		auto cb = static_cast<BufferWebGPU*>(constantBuffers_[unit_ind]);
 		if (cb == nullptr)
+		{
+			continue;
+		}
+		if (!pip->HasBinding(0, static_cast<uint32_t>(unit_ind), ShaderBindingResourceTypeWebGPU::UniformBuffer))
 		{
 			continue;
 		}
@@ -285,7 +341,7 @@ void CommandListWebGPU::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ,
 
 	for (int unit_ind = 0; unit_ind < static_cast<int32_t>(currentTextures_.size()); unit_ind++)
 	{
-		if (currentTextures_[unit_ind].texture == nullptr)
+		if (!pip->HasBinding(1, static_cast<uint32_t>(unit_ind), ShaderBindingResourceTypeWebGPU::Texture))
 		{
 			continue;
 		}
@@ -296,11 +352,15 @@ void CommandListWebGPU::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ,
 
 		wgpu::BindGroupEntry textureEntry{};
 		textureEntry.binding = unit_ind;
-		textureEntry.textureView = texture->GetTextureView();
+		textureEntry.textureView = texture != nullptr ? texture->GetTextureView() : fallbackTextureView_;
 		textureGroupEntries.push_back(textureEntry);
 
-		if (!BitwiseContains(texture->GetParameter().Usage, TextureUsageType::Storage))
+		if (texture == nullptr || !BitwiseContains(texture->GetParameter().Usage, TextureUsageType::Storage))
 		{
+			if (!pip->HasBinding(2, static_cast<uint32_t>(unit_ind), ShaderBindingResourceTypeWebGPU::Sampler))
+			{
+				continue;
+			}
 			wgpu::BindGroupEntry samplerEntry{};
 			samplerEntry.binding = unit_ind;
 			samplerEntry.sampler = samplers_[wm][mm];
@@ -311,6 +371,10 @@ void CommandListWebGPU::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ,
 	for (int unit_ind = 0; unit_ind < static_cast<int32_t>(computeBuffers_.size()); unit_ind++)
 	{
 		if (computeBuffers_[unit_ind].computeBuffer == nullptr)
+		{
+			continue;
+		}
+		if (!pip->HasBinding(2, static_cast<uint32_t>(unit_ind), ShaderBindingResourceTypeWebGPU::StorageBuffer))
 		{
 			continue;
 		}

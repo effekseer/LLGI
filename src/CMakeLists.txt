@@ -98,9 +98,9 @@ if(BUILD_WEBGPU)
     target_compile_options(LLGI PUBLIC --use-port=emdawnwebgpu)
     target_link_options(LLGI PUBLIC --use-port=emdawnwebgpu)
   elseif(TARGET dawn::webgpu_dawn)
-    target_link_libraries(LLGI PRIVATE dawn::webgpu_dawn)
+    target_link_libraries(LLGI PUBLIC dawn::webgpu_dawn)
   elseif(TARGET webgpu_dawn)
-    target_link_libraries(LLGI PRIVATE webgpu_dawn)
+    target_link_libraries(LLGI PUBLIC webgpu_dawn)
   else()
     message(FATAL_ERROR "Dawn targets were not found. Expected dawn::webgpu_dawn or webgpu_dawn.")
   endif()
@@ -123,22 +123,19 @@ endif()
 # --------------------
 # Install
 
-# Because dawn doesn't specify export
-if(NOT BUILD_WEBGPU)
-  install(
-    TARGETS LLGI
-    EXPORT LLGI-export
-    INCLUDES
-    DESTINATION include/LLGI
-    PUBLIC_HEADER DESTINATION include/LLGI
-    ARCHIVE DESTINATION lib
-    LIBRARY DESTINATION lib)
+install(
+  TARGETS LLGI
+  EXPORT LLGI-export
+  INCLUDES
+  DESTINATION include/LLGI
+  PUBLIC_HEADER DESTINATION include/LLGI
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib)
 
-  install(
-    EXPORT LLGI-export
-    FILE LLGI-config.cmake
-    DESTINATION lib/cmake
-    EXPORT_LINK_INTERFACE_LIBRARIES)
-endif()
+install(
+  EXPORT LLGI-export
+  FILE LLGI-config.cmake
+  DESTINATION lib/cmake
+  EXPORT_LINK_INTERFACE_LIBRARIES)
 
 clang_format(LLGI)
