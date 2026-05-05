@@ -240,6 +240,8 @@ void TextureDX12::Unlock()
 	ID3D12CommandAllocator* commandAllocator = nullptr;
 	ID3D12GraphicsCommandList* commandList = nullptr;
 	ID3D12Fence* fence = nullptr;
+	ID3D12CommandList* commandLists[] = {nullptr};
+	HRESULT hr = S_OK;
 
 	D3D12_TEXTURE_COPY_LOCATION src = {}, dst = {};
 
@@ -252,7 +254,7 @@ void TextureDX12::Unlock()
 		goto FAILED_EXIT;
 	}
 
-	auto hr = device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&commandAllocator));
+	hr = device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&commandAllocator));
 	if (FAILED(hr))
 	{
 		SHOW_DX12_ERROR(hr, device_);
@@ -288,8 +290,8 @@ void TextureDX12::Unlock()
 	ResourceBarrier(commandList, D3D12_RESOURCE_STATE_GENERIC_READ);
 
 	commandList->Close();
-	ID3D12CommandList* list[] = {commandList};
-	commandQueue_->ExecuteCommandLists(1, list);
+	commandLists[0] = commandList;
+	commandQueue_->ExecuteCommandLists(1, commandLists);
 
 	// TODO optimize it
 	hr = commandQueue_->Signal(fence, 1);
@@ -313,6 +315,9 @@ bool TextureDX12::GetData(std::vector<uint8_t>& data)
 	ID3D12CommandAllocator* commandAllocator = nullptr;
 	ID3D12GraphicsCommandList* commandList = nullptr;
 	ID3D12Fence* fence = nullptr;
+	ID3D12CommandList* commandLists[] = {nullptr};
+	HRESULT hr = S_OK;
+	uint8_t* ptr = nullptr;
 
 	D3D12_TEXTURE_COPY_LOCATION src = {}, dst = {};
 
@@ -325,7 +330,7 @@ bool TextureDX12::GetData(std::vector<uint8_t>& data)
 		goto FAILED_EXIT;
 	}
 
-	auto hr = device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&commandAllocator));
+	hr = device_->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&commandAllocator));
 	if (FAILED(hr))
 	{
 		SHOW_DX12_ERROR(hr, device_);
@@ -361,15 +366,14 @@ bool TextureDX12::GetData(std::vector<uint8_t>& data)
 	ResourceBarrier(commandList, D3D12_RESOURCE_STATE_GENERIC_READ);
 
 	commandList->Close();
-	ID3D12CommandList* list[] = {commandList};
-	commandQueue_->ExecuteCommandLists(1, list);
+	commandLists[0] = commandList;
+	commandQueue_->ExecuteCommandLists(1, commandLists);
 
 	// TODO optimize it
 	hr = commandQueue_->Signal(fence, 1);
 	fence->SetEventOnCompletion(1, event);
 	WaitForSingleObject(event, INFINITE);
 
-	uint8_t* ptr = nullptr;
 	buffer_for_readback_->Map(0, nullptr, (void**)&ptr);
 	if (ptr != nullptr)
 	{

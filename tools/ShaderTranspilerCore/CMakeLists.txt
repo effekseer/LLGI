@@ -9,12 +9,18 @@ if(BUILD_WEBGPU)
 else()
   target_compile_features(ShaderTranspilerCore PUBLIC cxx_std_17)
 endif()
-target_include_directories(ShaderTranspilerCore
-                           PUBLIC ${LLGI_THIRDPARTY_INCLUDES})
+target_include_directories(
+  ShaderTranspilerCore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
+                              ${LLGI_THIRDPARTY_INCLUDES})
 
 if(USE_THIRDPARTY_DIRECTORY)
-  target_link_libraries(ShaderTranspilerCore
-                        PUBLIC ${LLGI_THIRDPARTY_LIBRARIES})
+  if(LLGI_THIRDPARTY_LIBRARY_FILES)
+    target_link_libraries(ShaderTranspilerCore
+                          PUBLIC ${LLGI_THIRDPARTY_LIBRARY_FILES})
+  else()
+    target_link_libraries(ShaderTranspilerCore
+                          PUBLIC ${LLGI_THIRDPARTY_LIBRARIES})
+  endif()
   target_link_directories(ShaderTranspilerCore PUBLIC
                           ${LLGI_THIRDPARTY_LIBRARY_DIRECTORIES})
 endif()
@@ -29,7 +35,12 @@ else()
 endif()
 
 if(USE_THIRDPARTY_DIRECTORY)
-  add_dependencies(ShaderTranspilerCore EP_glslang EP_SPIRV-Cross)
+  if(TARGET EP_glslang)
+    add_dependencies(ShaderTranspilerCore EP_glslang)
+  endif()
+  if(TARGET EP_SPIRV-Cross)
+    add_dependencies(ShaderTranspilerCore EP_SPIRV-Cross)
+  endif()
 endif()
 
 if(MSVC)

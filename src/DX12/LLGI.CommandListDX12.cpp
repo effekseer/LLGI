@@ -153,12 +153,13 @@ CommandListDX12::~CommandListDX12()
 bool CommandListDX12::Initialize(GraphicsDX12* graphics, int32_t drawingCount)
 {
 	HRESULT hr;
+	ID3D12CommandAllocator* commandAllocator = nullptr;
+	ID3D12GraphicsCommandList* commandList = nullptr;
 
 	SafeAddRef(graphics);
 	graphics_ = CreateSharedPtr(graphics);
 
 	// Command Allocator
-	ID3D12CommandAllocator* commandAllocator = nullptr;
 	hr = graphics_->GetDevice()->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&commandAllocator));
 	if (FAILED(hr))
 	{
@@ -171,7 +172,6 @@ bool CommandListDX12::Initialize(GraphicsDX12* graphics, int32_t drawingCount)
 	commandAllocator_ = CreateSharedPtr(commandAllocator);
 
 	// Command List
-	ID3D12GraphicsCommandList* commandList = nullptr;
 	hr = graphics_->GetDevice()->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, commandAllocator, NULL, IID_PPV_ARGS(&commandList));
 	if (FAILED(hr))
 	{

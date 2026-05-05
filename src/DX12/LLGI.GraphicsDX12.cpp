@@ -312,9 +312,12 @@ std::vector<uint8_t> GraphicsDX12::CaptureRenderTarget(Texture* renderTarget)
 
 	ID3D12CommandAllocator* commandAllocator = nullptr;
 	ID3D12GraphicsCommandList* commandList = nullptr;
+	ID3D12CommandList* commandLists[] = {nullptr};
 	D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
 	UINT64 totalSize{};
 	D3D12_RESOURCE_DESC textureDesc{};
+	HRESULT hr = S_OK;
+	void* locked = nullptr;
 
 	BufferDX12 dstBuffer;
 	if (!dstBuffer.Initialize(this, BufferUsageType::CopyDst | BufferUsageType::MapRead, dstFootprint.RowPitch * dstFootprint.Height))
@@ -324,7 +327,7 @@ std::vector<uint8_t> GraphicsDX12::CaptureRenderTarget(Texture* renderTarget)
 		goto FAILED_EXIT;
 	}
 
-	auto hr = device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&commandAllocator));
+	hr = device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&commandAllocator));
 	if (FAILED(hr))
 	{
 		auto msg = (std::string("Error : ") + std::string(__FILE__) + " : " + std::to_string(__LINE__) + std::string(" : ") +
@@ -359,15 +362,15 @@ std::vector<uint8_t> GraphicsDX12::CaptureRenderTarget(Texture* renderTarget)
 	texture->ResourceBarrier(commandList, D3D12_RESOURCE_STATE_GENERIC_READ);
 
 	commandList->Close();
-	ID3D12CommandList* list[] = {commandList};
-	GetCommandQueue()->ExecuteCommandLists(1, list);
+	commandLists[0] = commandList;
+	GetCommandQueue()->ExecuteCommandLists(1, commandLists);
 
 	// TODO optimize it
 	WaitFinish();
 	SafeRelease(commandList);
 	SafeRelease(commandAllocator);
 
-	auto locked = dstBuffer.Lock();
+	locked = dstBuffer.Lock();
 
 	if (locked)
 	{

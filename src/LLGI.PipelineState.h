@@ -50,6 +50,7 @@ public:
 	//! only for DirectX12
 	std::array<int32_t, VertexLayoutMax> VertexLayoutSemantics;
 	int32_t VertexLayoutCount = 0;
+	int32_t VertexBufferStride = 0;
 
 	virtual void SetShader(ShaderStageType stage, Shader* shader);
 

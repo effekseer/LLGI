@@ -238,6 +238,8 @@ public:
 	*/
 	virtual void WaitFinish() {}
 
+	virtual bool GetIsMipmapGenerationSupportedOnTextureLoad() const { return false; }
+
 	virtual Buffer* CreateBuffer(BufferUsageType usage, int32_t size);
 
 	virtual Shader* CreateShader(DataStructure* data, int32_t count);

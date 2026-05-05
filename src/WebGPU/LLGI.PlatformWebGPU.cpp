@@ -207,7 +207,12 @@ bool PlatformWebGPU::Initialize(Window* window, bool waitVSync)
 
 	wgpu::DeviceDescriptor deviceDescriptor{};
 	std::vector<wgpu::FeatureName> requiredFeatures;
-	for (auto feature : {wgpu::FeatureName::Float32Filterable, wgpu::FeatureName::TextureFormatsTier2})
+	const wgpu::FeatureName optionalFeatures[] = {
+		wgpu::FeatureName::Float32Filterable,
+		wgpu::FeatureName::TextureFormatsTier2,
+		wgpu::FeatureName::TextureCompressionBC,
+	};
+	for (auto feature : optionalFeatures)
 	{
 		if (adapter_.HasFeature(feature))
 		{

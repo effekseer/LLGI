@@ -34,6 +34,16 @@ into `thirdparty/dawn` and runs Dawn's dependency fetch script:
 python scripts/fetch_dawn.py
 ```
 
+By default, the helper passes `--no-shallow` to Dawn's dependency fetch script.
+This is slower, but avoids partially-created dependency checkouts on Git
+installations that do not support Dawn's shallow fetch flow well. Use shallow
+dependency fetches only when the local Git/depot_tools setup is known to handle
+them:
+
+```bash
+python scripts/fetch_dawn.py --shallow-dependencies
+```
+
 Pin a Dawn revision for reproducible builds:
 
 ```bash
@@ -49,6 +59,10 @@ cmake -S . -B build-webgpu \
   -DBUILD_TOOL=ON
 cmake --build build-webgpu --config Release
 ```
+
+When `BUILD_WEBGPU=ON`, LLGI enables Dawn's CMake install/export metadata so
+parent projects can generate their own install exports without disabling install
+rules.
 
 ### Existing Dawn Checkout
 
@@ -143,9 +157,10 @@ rewrites are not applied.
 
 - If configure fails because Dawn is missing, run `python scripts/fetch_dawn.py`,
   add `thirdparty/dawn`, or set `WEBGPU_DAWN_SOURCE_DIR`.
-- If Dawn dependency sync fails, install `depot_tools` and ensure `gclient` is
-  available on `PATH`, or use a Dawn checkout whose dependencies are already
-  synced.
+- If Dawn dependency sync fails, rerun `python scripts/fetch_dawn.py` so the
+  helper uses Dawn's `--no-shallow` dependency mode. Install `depot_tools` and
+  ensure `gclient` is available on `PATH` if you use Dawn's official `gclient`
+  flow instead.
 - If WebGPU device creation fails on Windows with `d3dcompiler_47.dll`, rebuild
   with `WEBGPU_DAWN_FORCE_SYSTEM_COMPONENT_LOAD=ON`.
 - If shader creation fails, regenerate WGSL with the current `ShaderTranspiler`

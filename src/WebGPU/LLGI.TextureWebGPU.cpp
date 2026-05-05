@@ -1,5 +1,6 @@
 #include "LLGI.TextureWebGPU.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstring>
 #include <thread>
@@ -16,6 +17,57 @@ namespace
 uint32_t AlignTo(uint32_t value, uint32_t alignment)
 {
 	return (value + alignment - 1) / alignment * alignment;
+}
+
+int32_t GetMipmapPixelSize(TextureFormatType format)
+{
+	switch (format)
+	{
+	case TextureFormatType::R8_UNORM:
+		return 1;
+	case TextureFormatType::R8G8B8A8_UNORM:
+	case TextureFormatType::B8G8R8A8_UNORM:
+	case TextureFormatType::R8G8B8A8_UNORM_SRGB:
+	case TextureFormatType::B8G8R8A8_UNORM_SRGB:
+		return 4;
+	default:
+		return 0;
+	}
+}
+
+std::vector<uint8_t> GenerateNextMipmap(const std::vector<uint8_t>& src, int32_t srcWidth, int32_t srcHeight, int32_t pixelSize)
+{
+	const auto dstWidth = std::max(srcWidth / 2, 1);
+	const auto dstHeight = std::max(srcHeight / 2, 1);
+	std::vector<uint8_t> dst(static_cast<size_t>(dstWidth) * static_cast<size_t>(dstHeight) * pixelSize);
+
+	for (int32_t y = 0; y < dstHeight; y++)
+	{
+		for (int32_t x = 0; x < dstWidth; x++)
+		{
+			for (int32_t c = 0; c < pixelSize; c++)
+			{
+				int32_t sum = 0;
+				int32_t count = 0;
+				for (int32_t oy = 0; oy < 2; oy++)
+				{
+					const auto sy = std::min(y * 2 + oy, srcHeight - 1);
+					for (int32_t ox = 0; ox < 2; ox++)
+					{
+						const auto sx = std::min(x * 2 + ox, srcWidth - 1);
+						const auto srcIndex = (static_cast<size_t>(sy) * srcWidth + sx) * pixelSize + c;
+						sum += src[srcIndex];
+						count++;
+					}
+				}
+
+				const auto dstIndex = (static_cast<size_t>(y) * dstWidth + x) * pixelSize + c;
+				dst[dstIndex] = static_cast<uint8_t>((sum + count / 2) / count);
+			}
+		}
+	}
+
+	return dst;
 }
 } // namespace
 
@@ -57,7 +109,7 @@ bool TextureWebGPU::Initialize(wgpu::Device& device, const TextureParameter& par
 		wgpu::TextureDescriptor texDesc{};
 
 		texDesc.usage = wgpu::TextureUsage::TextureBinding | wgpu::TextureUsage::CopyDst | wgpu::TextureUsage::CopySrc;
-		if ((parameter.Usage & TextureUsageType::RenderTarget) != TextureUsageType::NoneFlag)
+		if (IsDepthFormat(parameter.Format) || (parameter.Usage & TextureUsageType::RenderTarget) != TextureUsageType::NoneFlag)
 		{
 			texDesc.usage |= wgpu::TextureUsage::RenderAttachment;
 		}
@@ -162,6 +214,7 @@ void TextureWebGPU::Unlock()
 {
 	wgpu::TexelCopyTextureInfo imageCopyTexture{};
 	imageCopyTexture.texture = texture_;
+	imageCopyTexture.mipLevel = 0;
 	imageCopyTexture.aspect = wgpu::TextureAspect::All;
 
 	wgpu::TexelCopyBufferLayout textureDataLayout;
@@ -171,6 +224,47 @@ void TextureWebGPU::Unlock()
 	extent.height = parameter_.Size.Y;
 	extent.depthOrArrayLayers = parameter_.Size.Z;
 	device_.GetQueue().WriteTexture(&imageCopyTexture, temp_buffer_.data(), temp_buffer_.size(), &textureDataLayout, &extent);
+}
+
+void TextureWebGPU::GenerateMipMaps()
+{
+	if (parameter_.MipLevelCount <= 1 || parameter_.Dimension != 2 || parameter_.Size.Z != 1)
+	{
+		return;
+	}
+
+	const auto pixelSize = GetMipmapPixelSize(format_);
+	if (pixelSize == 0 || temp_buffer_.empty())
+	{
+		return;
+	}
+
+	auto srcData = temp_buffer_;
+	auto srcWidth = parameter_.Size.X;
+	auto srcHeight = parameter_.Size.Y;
+
+	for (uint32_t mipLevel = 1; mipLevel < static_cast<uint32_t>(parameter_.MipLevelCount); mipLevel++)
+	{
+		auto mipData = GenerateNextMipmap(srcData, srcWidth, srcHeight, pixelSize);
+		srcWidth = std::max(srcWidth / 2, 1);
+		srcHeight = std::max(srcHeight / 2, 1);
+
+		wgpu::TexelCopyTextureInfo imageCopyTexture{};
+		imageCopyTexture.texture = texture_;
+		imageCopyTexture.mipLevel = mipLevel;
+		imageCopyTexture.aspect = wgpu::TextureAspect::All;
+
+		wgpu::TexelCopyBufferLayout textureDataLayout{};
+		textureDataLayout.bytesPerRow = static_cast<uint32_t>(srcWidth * pixelSize);
+
+		wgpu::Extent3D extent{};
+		extent.width = static_cast<uint32_t>(srcWidth);
+		extent.height = static_cast<uint32_t>(srcHeight);
+		extent.depthOrArrayLayers = 1;
+		device_.GetQueue().WriteTexture(&imageCopyTexture, mipData.data(), mipData.size(), &textureDataLayout, &extent);
+
+		srcData = std::move(mipData);
+	}
 }
 
 bool TextureWebGPU::GetData(std::vector<uint8_t>& data)

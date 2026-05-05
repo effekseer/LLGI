@@ -184,7 +184,7 @@ bool PipelineStateVulkan::CreateGraphicsPipeline()
 
 	vk::VertexInputBindingDescription bindDesc;
 	bindDesc.binding = 0;
-	bindDesc.stride = vertexOffset;
+	bindDesc.stride = VertexBufferStride > 0 ? VertexBufferStride : vertexOffset;
 	bindDesc.inputRate = vk::VertexInputRate::eVertex;
 	bindDescs.push_back(bindDesc);
 

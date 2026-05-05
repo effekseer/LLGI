@@ -22,6 +22,7 @@ public:
 	bool InitializeFromSurfaceTexture(wgpu::Device& device, wgpu::Texture texture, const TextureParameter& parameter);
 	void* Lock() override;
 	void Unlock() override;
+	void GenerateMipMaps() override;
 	bool GetData(std::vector<uint8_t>& data) override;
 	Vec2I GetSizeAs2D() const override;
 	bool IsRenderTexture() const override;
