@@ -97,8 +97,10 @@ public:
 
 class SPIRVToWGSLTranspiler : public SPIRVTranspiler
 {
+	bool fixMatrixDirection_ = false;
+
 public:
-	SPIRVToWGSLTranspiler();
+	SPIRVToWGSLTranspiler(bool fixMatrixDirection = false);
 	~SPIRVToWGSLTranspiler() override;
 	bool Transpile(const std::shared_ptr<SPIRV>& spirv, LLGI::ShaderStageType shaderStageType) override;
 };

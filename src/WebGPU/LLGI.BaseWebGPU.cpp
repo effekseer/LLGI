@@ -219,6 +219,9 @@ wgpu::TextureFormat ConvertFormat(TextureFormatType format)
 	if (format == TextureFormatType::BC3)
 		return wgpu::TextureFormat::BC3RGBAUnorm;
 
+	if (format == TextureFormatType::BC7)
+		return wgpu::TextureFormat::BC7RGBAUnorm;
+
 	if (format == TextureFormatType::BC1_SRGB)
 		return wgpu::TextureFormat::BC1RGBAUnormSrgb;
 
@@ -227,6 +230,9 @@ wgpu::TextureFormat ConvertFormat(TextureFormatType format)
 
 	if (format == TextureFormatType::BC3_SRGB)
 		return wgpu::TextureFormat::BC3RGBAUnormSrgb;
+
+	if (format == TextureFormatType::BC7_SRGB)
+		return wgpu::TextureFormat::BC7RGBAUnormSrgb;
 
 	if (format == TextureFormatType::D32)
 		return wgpu::TextureFormat::Depth32Float;
@@ -278,6 +284,9 @@ TextureFormatType ConvertFormat(wgpu::TextureFormat format)
 	if (format == wgpu::TextureFormat::BC3RGBAUnorm)
 		return TextureFormatType::BC3;
 
+	if (format == wgpu::TextureFormat::BC7RGBAUnorm)
+		return TextureFormatType::BC7;
+
 	if (format == wgpu::TextureFormat::BC1RGBAUnormSrgb)
 		return TextureFormatType::BC1_SRGB;
 
@@ -286,6 +295,9 @@ TextureFormatType ConvertFormat(wgpu::TextureFormat format)
 
 	if (format == wgpu::TextureFormat::BC3RGBAUnormSrgb)
 		return TextureFormatType::BC3_SRGB;
+
+	if (format == wgpu::TextureFormat::BC7RGBAUnormSrgb)
+		return TextureFormatType::BC7_SRGB;
 
 	if (format == wgpu::TextureFormat::Depth32Float)
 		return TextureFormatType::D32;

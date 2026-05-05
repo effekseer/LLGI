@@ -43,6 +43,116 @@ bool ParseAttributeIndex(const std::string& code, const char* attribute, size_t 
 	return true;
 }
 
+wgpu::StorageTextureAccess ParseStorageTextureAccess(const std::string& statement)
+{
+	if (statement.find("read_write") != std::string::npos)
+	{
+		return wgpu::StorageTextureAccess::ReadWrite;
+	}
+	if (statement.find("read") != std::string::npos)
+	{
+		return wgpu::StorageTextureAccess::ReadOnly;
+	}
+	return wgpu::StorageTextureAccess::WriteOnly;
+}
+
+wgpu::TextureFormat ParseStorageTextureFormat(const std::string& statement)
+{
+	if (statement.find("rgba32float") != std::string::npos)
+	{
+		return wgpu::TextureFormat::RGBA32Float;
+	}
+	if (statement.find("rgba32uint") != std::string::npos)
+	{
+		return wgpu::TextureFormat::RGBA32Uint;
+	}
+	if (statement.find("rgba32sint") != std::string::npos)
+	{
+		return wgpu::TextureFormat::RGBA32Sint;
+	}
+	if (statement.find("rgba16float") != std::string::npos)
+	{
+		return wgpu::TextureFormat::RGBA16Float;
+	}
+	if (statement.find("rgba8unorm") != std::string::npos)
+	{
+		return wgpu::TextureFormat::RGBA8Unorm;
+	}
+	if (statement.find("rgba8snorm") != std::string::npos)
+	{
+		return wgpu::TextureFormat::RGBA8Snorm;
+	}
+	if (statement.find("rgba8uint") != std::string::npos)
+	{
+		return wgpu::TextureFormat::RGBA8Uint;
+	}
+	if (statement.find("rgba8sint") != std::string::npos)
+	{
+		return wgpu::TextureFormat::RGBA8Sint;
+	}
+	if (statement.find("r32float") != std::string::npos)
+	{
+		return wgpu::TextureFormat::R32Float;
+	}
+	if (statement.find("r32uint") != std::string::npos)
+	{
+		return wgpu::TextureFormat::R32Uint;
+	}
+	if (statement.find("r32sint") != std::string::npos)
+	{
+		return wgpu::TextureFormat::R32Sint;
+	}
+	return wgpu::TextureFormat::Undefined;
+}
+
+wgpu::TextureViewDimension ParseTextureViewDimension(const std::string& statement)
+{
+	if (statement.find("texture_1d") != std::string::npos)
+	{
+		return wgpu::TextureViewDimension::e1D;
+	}
+	if (statement.find("texture_2d_array") != std::string::npos || statement.find("texture_storage_2d_array") != std::string::npos)
+	{
+		return wgpu::TextureViewDimension::e2DArray;
+	}
+	if (statement.find("texture_3d") != std::string::npos || statement.find("texture_storage_3d") != std::string::npos)
+	{
+		return wgpu::TextureViewDimension::e3D;
+	}
+	if (statement.find("texture_cube_array") != std::string::npos)
+	{
+		return wgpu::TextureViewDimension::CubeArray;
+	}
+	if (statement.find("texture_cube") != std::string::npos)
+	{
+		return wgpu::TextureViewDimension::Cube;
+	}
+	return wgpu::TextureViewDimension::e2D;
+}
+
+bool IsSameBinding(const ShaderBindingWebGPU& lhs, const ShaderBindingWebGPU& rhs)
+{
+	if (lhs.Group != rhs.Group || lhs.Binding != rhs.Binding || lhs.ResourceType != rhs.ResourceType)
+	{
+		return false;
+	}
+
+	if ((lhs.ResourceType == ShaderBindingResourceTypeWebGPU::Texture ||
+		 lhs.ResourceType == ShaderBindingResourceTypeWebGPU::StorageTexture) &&
+		lhs.TextureViewDimension != rhs.TextureViewDimension)
+	{
+		return false;
+	}
+
+	if (lhs.ResourceType == ShaderBindingResourceTypeWebGPU::StorageTexture)
+	{
+		return lhs.StorageTextureFormat == rhs.StorageTextureFormat &&
+			   lhs.StorageTextureAccess == rhs.StorageTextureAccess;
+	}
+
+	return true;
+}
+
 std::vector<ShaderBindingWebGPU> ReflectBindings(const std::string& code)
 {
 	std::vector<ShaderBindingWebGPU> bindings;
@@ -64,28 +174,45 @@ std::vector<ShaderBindingWebGPU> ReflectBindings(const std::string& code)
 			const auto statementEnd = code.find(';', groupPos);
 			const auto statementLength = statementEnd == std::string::npos ? std::string::npos : statementEnd - groupPos;
 			const auto statement = code.substr(groupPos, statementLength);
-			ShaderBindingResourceTypeWebGPU resourceType = ShaderBindingResourceTypeWebGPU::Unknown;
+			ShaderBindingWebGPU reflected;
+			reflected.Group = group;
+			reflected.Binding = binding;
 			if (statement.find("var<uniform>") != std::string::npos)
 			{
-				resourceType = ShaderBindingResourceTypeWebGPU::UniformBuffer;
+				reflected.ResourceType = ShaderBindingResourceTypeWebGPU::UniformBuffer;
 			}
 			else if (statement.find("var<storage") != std::string::npos)
 			{
-				resourceType = ShaderBindingResourceTypeWebGPU::StorageBuffer;
+				if (statement.find("read_write") != std::string::npos)
+				{
+					reflected.ResourceType = ShaderBindingResourceTypeWebGPU::StorageBuffer;
+				}
+				else
+				{
+					reflected.ResourceType = ShaderBindingResourceTypeWebGPU::ReadOnlyStorageBuffer;
+				}
+			}
+			else if (statement.find(": texture_storage_") != std::string::npos)
+			{
+				reflected.ResourceType = ShaderBindingResourceTypeWebGPU::StorageTexture;
+				reflected.TextureViewDimension = ParseTextureViewDimension(statement);
+				reflected.StorageTextureFormat = ParseStorageTextureFormat(statement);
+				reflected.StorageTextureAccess = ParseStorageTextureAccess(statement);
 			}
 			else if (statement.find(": texture_") != std::string::npos)
 			{
-				resourceType = ShaderBindingResourceTypeWebGPU::Texture;
+				reflected.ResourceType = ShaderBindingResourceTypeWebGPU::Texture;
+				reflected.TextureViewDimension = ParseTextureViewDimension(statement);
 			}
 			else if (statement.find(": sampler") != std::string::npos)
 			{
-				resourceType = ShaderBindingResourceTypeWebGPU::Sampler;
+				reflected.ResourceType = ShaderBindingResourceTypeWebGPU::Sampler;
 			}
 
 			bool exists = false;
 			for (const auto& b : bindings)
 			{
-				if (b.Group == group && b.Binding == binding && b.ResourceType == resourceType)
+				if (IsSameBinding(b, reflected))
 				{
 					exists = true;
 					break;
@@ -94,10 +221,6 @@ std::vector<ShaderBindingWebGPU> ReflectBindings(const std::string& code)
 
 			if (!exists)
 			{
-				ShaderBindingWebGPU reflected;
-				reflected.Group = group;
-				reflected.Binding = binding;
-				reflected.ResourceType = resourceType;
 				bindings.push_back(reflected);
 			}
 		}

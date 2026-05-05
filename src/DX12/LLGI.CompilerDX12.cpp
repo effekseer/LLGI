@@ -75,10 +75,10 @@ void CompilerDX12::Initialize() {}
 
 void CompilerDX12::Compile(CompilerResult& result, const char* code, ShaderStageType shaderStage)
 {
-	char* vs_target = "vs_5_0";
-	char* ps_target = "ps_5_0";
-	char* cs_target = "cs_5_0";
-	char* target = nullptr;
+	const char* vs_target = "vs_5_0";
+	const char* ps_target = "ps_5_0";
+	const char* cs_target = "cs_5_0";
+	const char* target = nullptr;
 
 	if (shaderStage == ShaderStageType::Vertex)
 	{

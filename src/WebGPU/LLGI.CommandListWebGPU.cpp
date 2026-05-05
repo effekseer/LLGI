@@ -8,6 +8,22 @@
 
 namespace LLGI
 {
+namespace
+{
+ShaderBindingResourceTypeWebGPU GetTextureBindingResourceType(TextureWebGPU* texture)
+{
+	if (texture != nullptr && BitwiseContains(texture->GetParameter().Usage, TextureUsageType::Storage))
+	{
+		return ShaderBindingResourceTypeWebGPU::StorageTexture;
+	}
+	return ShaderBindingResourceTypeWebGPU::Texture;
+}
+
+bool NeedsTextureSampler(TextureWebGPU* texture)
+{
+	return texture == nullptr || !BitwiseContains(texture->GetParameter().Usage, TextureUsageType::Storage);
+}
+} // namespace
 
 CommandListWebGPU::CommandListWebGPU(wgpu::Device device) : device_(device)
 {
@@ -52,7 +68,8 @@ CommandListWebGPU::CommandListWebGPU(wgpu::Device device) : device_(device)
 
 			samplerDesc.magFilter = filters[f];
 			samplerDesc.minFilter = filters[f];
-			samplerDesc.mipmapFilter = filters[f] == wgpu::FilterMode::Linear ? wgpu::MipmapFilterMode::Linear : wgpu::MipmapFilterMode::Nearest;
+			// LLGI exposes min/mag filtering only, so keep mip selection point-filtered.
+			samplerDesc.mipmapFilter = wgpu::MipmapFilterMode::Nearest;
 			samplerDesc.lodMinClamp = 0.0f;
 			samplerDesc.lodMaxClamp = 32.0f;
 			samplerDesc.maxAnisotropy = 1;
@@ -200,9 +217,10 @@ void CommandListWebGPU::Draw(int32_t primitiveCount, int32_t instanceCount)
 
 	for (int unit_ind = 0; unit_ind < static_cast<int32_t>(currentTextures_.size()); unit_ind++)
 	{
-		if (!pip->HasBinding(1, static_cast<uint32_t>(unit_ind), ShaderBindingResourceTypeWebGPU::Texture))
-			continue;
 		auto texture = static_cast<TextureWebGPU*>(currentTextures_[unit_ind].texture);
+		const auto resourceType = GetTextureBindingResourceType(texture);
+		if (!pip->HasBinding(1, static_cast<uint32_t>(unit_ind), resourceType))
+			continue;
 		auto wm = (int32_t)currentTextures_[unit_ind].wrapMode;
 		auto mm = (int32_t)currentTextures_[unit_ind].minMagFilter;
 
@@ -212,7 +230,7 @@ void CommandListWebGPU::Draw(int32_t primitiveCount, int32_t instanceCount)
 		textureGroupEntries.push_back(textureEntry);
 
 		wgpu::BindGroupEntry samplerEntry = {};
-		if (texture == nullptr || !BitwiseContains(texture->GetParameter().Usage, TextureUsageType::Storage))
+		if (NeedsTextureSampler(texture))
 		{
 			if (!pip->HasBinding(2, static_cast<uint32_t>(unit_ind), ShaderBindingResourceTypeWebGPU::Sampler))
 			{
@@ -341,12 +359,13 @@ void CommandListWebGPU::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ,
 
 	for (int unit_ind = 0; unit_ind < static_cast<int32_t>(currentTextures_.size()); unit_ind++)
 	{
-		if (!pip->HasBinding(1, static_cast<uint32_t>(unit_ind), ShaderBindingResourceTypeWebGPU::Texture))
+		auto texture = static_cast<TextureWebGPU*>(currentTextures_[unit_ind].texture);
+		const auto resourceType = GetTextureBindingResourceType(texture);
+		if (!pip->HasBinding(1, static_cast<uint32_t>(unit_ind), resourceType))
 		{
 			continue;
 		}
 
-		auto texture = static_cast<TextureWebGPU*>(currentTextures_[unit_ind].texture);
 		auto wm = (int32_t)currentTextures_[unit_ind].wrapMode;
 		auto mm = (int32_t)currentTextures_[unit_ind].minMagFilter;
 
@@ -355,7 +374,7 @@ void CommandListWebGPU::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ,
 		textureEntry.textureView = texture != nullptr ? texture->GetTextureView() : fallbackTextureView_;
 		textureGroupEntries.push_back(textureEntry);
 
-		if (texture == nullptr || !BitwiseContains(texture->GetParameter().Usage, TextureUsageType::Storage))
+		if (NeedsTextureSampler(texture))
 		{
 			if (!pip->HasBinding(2, static_cast<uint32_t>(unit_ind), ShaderBindingResourceTypeWebGPU::Sampler))
 			{

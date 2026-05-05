@@ -30,6 +30,7 @@
 #endif
 
 #include <iostream>
+#include <regex>
 #include <sstream>
 
 namespace LLGI
@@ -51,7 +52,22 @@ std::string Replace(std::string target, std::string from_, std::string to_)
 }
 
 #if (ENABLE_WEBGPU)
-std::string NormalizeWGSLForLLGI(std::string code, ShaderStageType shaderStageType)
+std::string NormalizeWGSLMatrixDirection(std::string code)
+{
+	static const std::regex modelMatrixRegex(R"(\((localPos|localPosition|worldPos|localNormal|localBinormal|localTangent) \* (mModel)\))");
+	static const std::regex cameraMatrixRegex(R"(\((\w+) \* (v\._\w+_mCameraProj)\))");
+	static const std::regex cameraMatrixExpressionRegex(R"(\(\(([^()]+ \+ [^()]+)\) \* (v\._\w+_mCameraProj)\))");
+
+	code = std::regex_replace(code, modelMatrixRegex, "($2 * $1)");
+	code = std::regex_replace(code, cameraMatrixRegex, "($2 * $1)");
+	code = std::regex_replace(code, cameraMatrixExpressionRegex, "($2 * ($1))");
+	code = Replace(code, "worldNormal = normalize(worldNormal);", "worldNormal = vec4<f32>(normalize(worldNormal.xyz), 0.0f);");
+	code = Replace(code, "worldBinormal = normalize(worldBinormal);", "worldBinormal = vec4<f32>(normalize(worldBinormal.xyz), 0.0f);");
+	code = Replace(code, "worldTangent = normalize(worldTangent);", "worldTangent = vec4<f32>(normalize(worldTangent.xyz), 0.0f);");
+	return code;
+}
+
+std::string NormalizeWGSLForLLGI(std::string code, ShaderStageType shaderStageType, bool fixMatrixDirection)
 {
 	for (uint32_t i = 0; i < TextureSlotMax; i++)
 	{
@@ -89,6 +105,11 @@ std::string NormalizeWGSLForLLGI(std::string code, ShaderStageType shaderStageTy
 		output << line << "\n";
 	}
 	code = output.str();
+
+	if (fixMatrixDirection)
+	{
+		code = NormalizeWGSLMatrixDirection(code);
+	}
 
 	return code;
 }
@@ -442,7 +463,7 @@ bool SPIRVToGLSLTranspiler::Transpile(const std::shared_ptr<SPIRV>& spirv, LLGI:
 	return true;
 }
 
-SPIRVToWGSLTranspiler::SPIRVToWGSLTranspiler()
+SPIRVToWGSLTranspiler::SPIRVToWGSLTranspiler(bool fixMatrixDirection) : fixMatrixDirection_(fixMatrixDirection)
 {
 #if (ENABLE_WEBGPU)
 	tint::Initialize();
@@ -469,7 +490,7 @@ bool SPIRVToWGSLTranspiler::Transpile(const std::shared_ptr<SPIRV>& spirv, LLGI:
 		return false;
 	}
 
-	code_ = NormalizeWGSLForLLGI(result.Get(), shaderStageType);
+	code_ = NormalizeWGSLForLLGI(result.Get(), shaderStageType, fixMatrixDirection_);
 	return true;
 #else
 	errorCode_ = "WGSL output requires ShaderTranspilerCore to be built with BUILD_WEBGPU=ON.";

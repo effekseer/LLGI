@@ -14,6 +14,8 @@ enum class ShaderBindingResourceTypeWebGPU
 	Texture,
 	Sampler,
 	StorageBuffer,
+	ReadOnlyStorageBuffer,
+	StorageTexture,
 };
 
 struct ShaderBindingWebGPU
@@ -21,6 +23,9 @@ struct ShaderBindingWebGPU
 	uint32_t Group = 0;
 	uint32_t Binding = 0;
 	ShaderBindingResourceTypeWebGPU ResourceType = ShaderBindingResourceTypeWebGPU::Unknown;
+	wgpu::TextureViewDimension TextureViewDimension = wgpu::TextureViewDimension::e2D;
+	wgpu::TextureFormat StorageTextureFormat = wgpu::TextureFormat::Undefined;
+	wgpu::StorageTextureAccess StorageTextureAccess = wgpu::StorageTextureAccess::Undefined;
 };
 
 class ShaderWebGPU : public Shader

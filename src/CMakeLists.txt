@@ -18,7 +18,7 @@ else()
   list(APPEND files ${files_linux})
 endif()
 
-if(MSVC AND NOT BUILD_WEBGPU)
+if(MSVC)
   file(GLOB files_dx12 DX12/*.h DX12/*.cpp)
   list(APPEND files ${files_dx12})
 endif()

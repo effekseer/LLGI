@@ -26,10 +26,22 @@ bool BuildBindGroupLayoutEntry(const ShaderBindingWebGPU& binding, wgpu::ShaderS
 		entry.buffer.hasDynamicOffset = false;
 		entry.buffer.minBindingSize = 0;
 		return true;
+	case ShaderBindingResourceTypeWebGPU::ReadOnlyStorageBuffer:
+		entry.buffer.type = wgpu::BufferBindingType::ReadOnlyStorage;
+		entry.buffer.hasDynamicOffset = false;
+		entry.buffer.minBindingSize = 0;
+		return true;
 	case ShaderBindingResourceTypeWebGPU::Texture:
 		entry.texture.sampleType = wgpu::TextureSampleType::Float;
-		entry.texture.viewDimension = wgpu::TextureViewDimension::e2D;
+		entry.texture.viewDimension = binding.TextureViewDimension;
 		entry.texture.multisampled = false;
+		return true;
+	case ShaderBindingResourceTypeWebGPU::StorageTexture:
+		entry.storageTexture.access =
+			binding.StorageTextureAccess != wgpu::StorageTextureAccess::Undefined ? binding.StorageTextureAccess : wgpu::StorageTextureAccess::WriteOnly;
+		entry.storageTexture.format =
+			binding.StorageTextureFormat != wgpu::TextureFormat::Undefined ? binding.StorageTextureFormat : wgpu::TextureFormat::RGBA32Float;
+		entry.storageTexture.viewDimension = binding.TextureViewDimension;
 		return true;
 	case ShaderBindingResourceTypeWebGPU::Sampler:
 		entry.sampler.type = wgpu::SamplerBindingType::Filtering;
@@ -43,10 +55,26 @@ bool ContainsBinding(const std::vector<ShaderBindingWebGPU>& bindings, const Sha
 {
 	for (const auto& existingBinding : bindings)
 	{
-		if (existingBinding.Group == binding.Group && existingBinding.Binding == binding.Binding && existingBinding.ResourceType == binding.ResourceType)
+		if (existingBinding.Group != binding.Group || existingBinding.Binding != binding.Binding || existingBinding.ResourceType != binding.ResourceType)
 		{
-			return true;
+			continue;
 		}
+
+		if ((binding.ResourceType == ShaderBindingResourceTypeWebGPU::Texture ||
+			 binding.ResourceType == ShaderBindingResourceTypeWebGPU::StorageTexture) &&
+			existingBinding.TextureViewDimension != binding.TextureViewDimension)
+		{
+			continue;
+		}
+
+		if (binding.ResourceType == ShaderBindingResourceTypeWebGPU::StorageTexture &&
+			(existingBinding.StorageTextureFormat != binding.StorageTextureFormat ||
+			 existingBinding.StorageTextureAccess != binding.StorageTextureAccess))
+		{
+			continue;
+		}
+
+		return true;
 	}
 
 	return false;
@@ -133,7 +161,11 @@ bool PipelineStateWebGPU::HasBinding(uint32_t group, uint32_t binding, ShaderBin
 
 	for (const auto& b : bindings_)
 	{
-		if (b.Group == group && b.Binding == binding && (b.ResourceType == resourceType || b.ResourceType == ShaderBindingResourceTypeWebGPU::Unknown))
+		const bool isCompatibleStorageBuffer =
+			resourceType == ShaderBindingResourceTypeWebGPU::StorageBuffer &&
+			b.ResourceType == ShaderBindingResourceTypeWebGPU::ReadOnlyStorageBuffer;
+		if (b.Group == group && b.Binding == binding &&
+			(b.ResourceType == resourceType || b.ResourceType == ShaderBindingResourceTypeWebGPU::Unknown || isCompatibleStorageBuffer))
 		{
 			return true;
 		}
@@ -185,7 +217,7 @@ bool PipelineStateWebGPU::Compile()
 
 	desc.primitive.topology = Convert(Topology);
 	desc.primitive.stripIndexFormat = wgpu::IndexFormat::Undefined; // is it correct?
-	desc.primitive.frontFace = wgpu::FrontFace::CCW;
+	desc.primitive.frontFace = wgpu::FrontFace::CW;
 	desc.primitive.cullMode = Convert(Culling);
 	desc.multisample.count = static_cast<uint32_t>(renderPassPipelineState_->Key.SamplingCount);
 	desc.multisample.mask = std::numeric_limits<int32_t>::max();
