@@ -19,57 +19,184 @@ uint32_t AlignTo(uint32_t value, uint32_t alignment)
 	return (value + alignment - 1) / alignment * alignment;
 }
 
-int32_t GetMipmapPixelSize(TextureFormatType format)
-{
-	switch (format)
-	{
-	case TextureFormatType::R8_UNORM:
-		return 1;
-	case TextureFormatType::R8G8B8A8_UNORM:
-	case TextureFormatType::B8G8R8A8_UNORM:
-	case TextureFormatType::R8G8B8A8_UNORM_SRGB:
-	case TextureFormatType::B8G8R8A8_UNORM_SRGB:
-		return 4;
-	default:
-		return 0;
-	}
+const char* MipmapShaderWGSL = R"(
+struct VSOutput {
+	@builtin(position) position : vec4f,
+	@location(0) uv : vec2f,
+};
+
+@vertex
+fn VSMain(@builtin(vertex_index) vertexId : u32) -> VSOutput {
+	var positions = array<vec2f, 3>(
+		vec2f(-1.0, -1.0),
+		vec2f(-1.0, 3.0),
+		vec2f(3.0, -1.0));
+	var uvs = array<vec2f, 3>(
+		vec2f(0.0, 1.0),
+		vec2f(0.0, -1.0),
+		vec2f(2.0, 1.0));
+
+	var output : VSOutput;
+	output.position = vec4f(positions[vertexId], 0.0, 1.0);
+	output.uv = uvs[vertexId];
+	return output;
 }
 
-std::vector<uint8_t> GenerateNextMipmap(const std::vector<uint8_t>& src, int32_t srcWidth, int32_t srcHeight, int32_t pixelSize)
-{
-	const auto dstWidth = std::max(srcWidth / 2, 1);
-	const auto dstHeight = std::max(srcHeight / 2, 1);
-	std::vector<uint8_t> dst(static_cast<size_t>(dstWidth) * static_cast<size_t>(dstHeight) * pixelSize);
+@group(0) @binding(0) var srcSampler : sampler;
+@group(0) @binding(1) var srcTexture : texture_2d<f32>;
 
-	for (int32_t y = 0; y < dstHeight; y++)
-	{
-		for (int32_t x = 0; x < dstWidth; x++)
-		{
-			for (int32_t c = 0; c < pixelSize; c++)
-			{
-				int32_t sum = 0;
-				int32_t count = 0;
-				for (int32_t oy = 0; oy < 2; oy++)
-				{
-					const auto sy = std::min(y * 2 + oy, srcHeight - 1);
-					for (int32_t ox = 0; ox < 2; ox++)
-					{
-						const auto sx = std::min(x * 2 + ox, srcWidth - 1);
-						const auto srcIndex = (static_cast<size_t>(sy) * srcWidth + sx) * pixelSize + c;
-						sum += src[srcIndex];
-						count++;
-					}
-				}
-
-				const auto dstIndex = (static_cast<size_t>(y) * dstWidth + x) * pixelSize + c;
-				dst[dstIndex] = static_cast<uint8_t>((sum + count / 2) / count);
-			}
-		}
-	}
-
-	return dst;
+@fragment
+fn PSMain(input : VSOutput) -> @location(0) vec4f {
+	return textureSample(srcTexture, srcSampler, input.uv);
 }
+)";
+
+struct MipmapSize
+{
+	uint32_t Width = 1;
+	uint32_t Height = 1;
+};
+
+bool CanGenerateMipMaps(const TextureParameter& parameter)
+{
+	return parameter.MipLevelCount > 1 && parameter.Dimension == 2 && parameter.Size.Z == 1 && !IsDepthFormat(parameter.Format) &&
+		   parameter.SampleCount == 1;
+}
+
+MipmapSize GetMipmapSize(const TextureParameter& parameter, uint32_t mipLevel)
+{
+	MipmapSize size;
+	size.Width = std::max<uint32_t>(static_cast<uint32_t>(parameter.Size.X) >> mipLevel, 1);
+	size.Height = std::max<uint32_t>(static_cast<uint32_t>(parameter.Size.Y) >> mipLevel, 1);
+	return size;
+}
+
+wgpu::TextureViewDescriptor CreateMipmapViewDesc(wgpu::TextureFormat format, uint32_t mipLevel)
+{
+	wgpu::TextureViewDescriptor desc{};
+	desc.format = format;
+	desc.dimension = wgpu::TextureViewDimension::e2D;
+	desc.baseMipLevel = mipLevel;
+	desc.mipLevelCount = 1;
+	desc.baseArrayLayer = 0;
+	desc.arrayLayerCount = 1;
+	desc.aspect = wgpu::TextureAspect::All;
+	return desc;
+}
+
+wgpu::RenderPassColorAttachment CreateMipmapColorAttachment(wgpu::TextureView view)
+{
+	wgpu::RenderPassColorAttachment attachment{};
+	attachment.view = view;
+	attachment.loadOp = wgpu::LoadOp::Clear;
+	attachment.storeOp = wgpu::StoreOp::Store;
+	attachment.clearValue = {0, 0, 0, 0};
+	return attachment;
+}
+
 } // namespace
+
+bool TextureWebGPU::CreateMipmapResources()
+{
+	if (mipmapShaderModule_ != nullptr)
+	{
+		return true;
+	}
+
+	wgpu::BindGroupLayoutEntry entries[2]{};
+	entries[0].binding = 0;
+	entries[0].visibility = wgpu::ShaderStage::Fragment;
+	entries[0].sampler.type = wgpu::SamplerBindingType::Filtering;
+	entries[1].binding = 1;
+	entries[1].visibility = wgpu::ShaderStage::Fragment;
+	entries[1].texture.sampleType = wgpu::TextureSampleType::Float;
+	entries[1].texture.viewDimension = wgpu::TextureViewDimension::e2D;
+	entries[1].texture.multisampled = false;
+
+	wgpu::BindGroupLayoutDescriptor bindGroupLayoutDesc{};
+	bindGroupLayoutDesc.entryCount = 2;
+	bindGroupLayoutDesc.entries = entries;
+	mipmapBindGroupLayout_ = device_.CreateBindGroupLayout(&bindGroupLayoutDesc);
+	if (mipmapBindGroupLayout_ == nullptr)
+	{
+		return false;
+	}
+
+	wgpu::PipelineLayoutDescriptor pipelineLayoutDesc{};
+	pipelineLayoutDesc.bindGroupLayoutCount = 1;
+	pipelineLayoutDesc.bindGroupLayouts = &mipmapBindGroupLayout_;
+	mipmapPipelineLayout_ = device_.CreatePipelineLayout(&pipelineLayoutDesc);
+	if (mipmapPipelineLayout_ == nullptr)
+	{
+		return false;
+	}
+
+	wgpu::SamplerDescriptor samplerDesc{};
+	samplerDesc.addressModeU = wgpu::AddressMode::ClampToEdge;
+	samplerDesc.addressModeV = wgpu::AddressMode::ClampToEdge;
+	samplerDesc.addressModeW = wgpu::AddressMode::ClampToEdge;
+	samplerDesc.magFilter = wgpu::FilterMode::Linear;
+	samplerDesc.minFilter = wgpu::FilterMode::Linear;
+	samplerDesc.mipmapFilter = wgpu::MipmapFilterMode::Nearest;
+	samplerDesc.lodMinClamp = 0.0f;
+	samplerDesc.lodMaxClamp = 32.0f;
+	samplerDesc.maxAnisotropy = 1;
+	mipmapSampler_ = device_.CreateSampler(&samplerDesc);
+	if (mipmapSampler_ == nullptr)
+	{
+		return false;
+	}
+
+	wgpu::ShaderSourceWGSL wgslDesc{};
+	wgslDesc.code = wgpu::StringView(MipmapShaderWGSL, strlen(MipmapShaderWGSL));
+	wgpu::ShaderModuleDescriptor shaderDesc{};
+	shaderDesc.nextInChain = reinterpret_cast<wgpu::ChainedStruct*>(&wgslDesc);
+	mipmapShaderModule_ = device_.CreateShaderModule(&shaderDesc);
+	return mipmapShaderModule_ != nullptr;
+}
+
+wgpu::RenderPipeline TextureWebGPU::GetMipmapPipeline(wgpu::TextureFormat format)
+{
+	auto found = mipmapPipelines_.find(format);
+	if (found != mipmapPipelines_.end())
+	{
+		return found->second;
+	}
+
+	if (!CreateMipmapResources())
+	{
+		return nullptr;
+	}
+
+	wgpu::ColorTargetState colorTargetState{};
+	colorTargetState.format = format;
+	colorTargetState.writeMask = wgpu::ColorWriteMask::All;
+
+	wgpu::FragmentState fragmentState{};
+	fragmentState.module = mipmapShaderModule_;
+	fragmentState.entryPoint = "PSMain";
+	fragmentState.targetCount = 1;
+	fragmentState.targets = &colorTargetState;
+
+	wgpu::RenderPipelineDescriptor desc{};
+	desc.layout = mipmapPipelineLayout_;
+	desc.vertex.module = mipmapShaderModule_;
+	desc.vertex.entryPoint = "VSMain";
+	desc.primitive.topology = wgpu::PrimitiveTopology::TriangleList;
+	desc.primitive.frontFace = wgpu::FrontFace::CW;
+	desc.primitive.cullMode = wgpu::CullMode::None;
+	desc.fragment = &fragmentState;
+	desc.multisample.count = 1;
+	desc.multisample.mask = UINT32_MAX;
+	desc.multisample.alphaToCoverageEnabled = false;
+
+	auto pipeline = device_.CreateRenderPipeline(&desc);
+	if (pipeline != nullptr)
+	{
+		mipmapPipelines_[format] = pipeline;
+	}
+	return pipeline;
+}
 
 bool TextureWebGPU::Initialize(wgpu::Device& device, const TextureParameter& parameter, wgpu::Instance instance)
 {
@@ -110,6 +237,11 @@ bool TextureWebGPU::Initialize(wgpu::Device& device, const TextureParameter& par
 
 		texDesc.usage = wgpu::TextureUsage::TextureBinding | wgpu::TextureUsage::CopyDst | wgpu::TextureUsage::CopySrc;
 		if (IsDepthFormat(parameter.Format) || (parameter.Usage & TextureUsageType::RenderTarget) != TextureUsageType::NoneFlag)
+		{
+			texDesc.usage |= wgpu::TextureUsage::RenderAttachment;
+		}
+
+		if (CanGenerateMipMaps(parameter))
 		{
 			texDesc.usage |= wgpu::TextureUsage::RenderAttachment;
 		}
@@ -226,44 +358,53 @@ void TextureWebGPU::Unlock()
 	device_.GetQueue().WriteTexture(&imageCopyTexture, temp_buffer_.data(), temp_buffer_.size(), &textureDataLayout, &extent);
 }
 
-void TextureWebGPU::GenerateMipMaps()
+void TextureWebGPU::GenerateMipMaps(wgpu::CommandEncoder& commandEncoder)
 {
-	if (parameter_.MipLevelCount <= 1 || parameter_.Dimension != 2 || parameter_.Size.Z != 1)
+	if (!CanGenerateMipMaps(parameter_))
 	{
 		return;
 	}
 
-	const auto pixelSize = GetMipmapPixelSize(format_);
-	if (pixelSize == 0 || temp_buffer_.empty())
+	const auto format = ConvertFormat(parameter_.Format);
+	auto pipeline = GetMipmapPipeline(format);
+	if (pipeline == nullptr)
 	{
 		return;
 	}
-
-	auto srcData = temp_buffer_;
-	auto srcWidth = parameter_.Size.X;
-	auto srcHeight = parameter_.Size.Y;
 
 	for (uint32_t mipLevel = 1; mipLevel < static_cast<uint32_t>(parameter_.MipLevelCount); mipLevel++)
 	{
-		auto mipData = GenerateNextMipmap(srcData, srcWidth, srcHeight, pixelSize);
-		srcWidth = std::max(srcWidth / 2, 1);
-		srcHeight = std::max(srcHeight / 2, 1);
+		const auto srcViewDesc = CreateMipmapViewDesc(format, mipLevel - 1);
+		auto srcView = texture_.CreateView(&srcViewDesc);
 
-		wgpu::TexelCopyTextureInfo imageCopyTexture{};
-		imageCopyTexture.texture = texture_;
-		imageCopyTexture.mipLevel = mipLevel;
-		imageCopyTexture.aspect = wgpu::TextureAspect::All;
+		const auto dstViewDesc = CreateMipmapViewDesc(format, mipLevel);
+		auto dstView = texture_.CreateView(&dstViewDesc);
 
-		wgpu::TexelCopyBufferLayout textureDataLayout{};
-		textureDataLayout.bytesPerRow = static_cast<uint32_t>(srcWidth * pixelSize);
+		wgpu::BindGroupEntry bindGroupEntries[2]{};
+		bindGroupEntries[0].binding = 0;
+		bindGroupEntries[0].sampler = mipmapSampler_;
+		bindGroupEntries[1].binding = 1;
+		bindGroupEntries[1].textureView = srcView;
 
-		wgpu::Extent3D extent{};
-		extent.width = static_cast<uint32_t>(srcWidth);
-		extent.height = static_cast<uint32_t>(srcHeight);
-		extent.depthOrArrayLayers = 1;
-		device_.GetQueue().WriteTexture(&imageCopyTexture, mipData.data(), mipData.size(), &textureDataLayout, &extent);
+		wgpu::BindGroupDescriptor bindGroupDesc{};
+		bindGroupDesc.layout = mipmapBindGroupLayout_;
+		bindGroupDesc.entryCount = 2;
+		bindGroupDesc.entries = bindGroupEntries;
+		auto bindGroup = device_.CreateBindGroup(&bindGroupDesc);
 
-		srcData = std::move(mipData);
+		auto colorAttachment = CreateMipmapColorAttachment(dstView);
+
+		wgpu::RenderPassDescriptor renderPassDesc{};
+		renderPassDesc.colorAttachmentCount = 1;
+		renderPassDesc.colorAttachments = &colorAttachment;
+
+		auto passEncoder = commandEncoder.BeginRenderPass(&renderPassDesc);
+		const auto dstSize = GetMipmapSize(parameter_, mipLevel);
+		passEncoder.SetViewport(0.0f, 0.0f, static_cast<float>(dstSize.Width), static_cast<float>(dstSize.Height), 0.0f, 1.0f);
+		passEncoder.SetPipeline(pipeline);
+		passEncoder.SetBindGroup(0, bindGroup);
+		passEncoder.Draw(3);
+		passEncoder.End();
 	}
 }
 

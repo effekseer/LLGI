@@ -2,12 +2,31 @@
 
 #include "../LLGI.CommandList.h"
 #include "LLGI.BaseWebGPU.h"
+#include <array>
+#include <vector>
 
 namespace LLGI
 {
 
 class CommandListWebGPU : public CommandList
 {
+	struct BindGroupEntryKey
+	{
+		uint32_t binding = 0;
+		const void* resource = nullptr;
+		uint64_t offset = 0;
+		uint64_t size = 0;
+		int32_t wrapMode = 0;
+		int32_t minMagFilter = 0;
+	};
+
+	struct BindGroupCache
+	{
+		const void* pipeline = nullptr;
+		std::vector<BindGroupEntryKey> entries;
+		wgpu::BindGroup bindGroup = nullptr;
+	};
+
 	wgpu::Device device_;
 	wgpu::CommandBuffer commandBuffer_;
 	wgpu::CommandEncoder commandEncorder_;
@@ -16,6 +35,16 @@ class CommandListWebGPU : public CommandList
 	wgpu::Sampler samplers_[3][2];
 	wgpu::Texture fallbackTexture_;
 	wgpu::TextureView fallbackTextureView_;
+	std::array<BindGroupCache, 3> renderBindGroupCaches_;
+	std::array<BindGroupCache, 3> computeBindGroupCaches_;
+
+	static bool Equals(const std::vector<BindGroupEntryKey>& lhs, const std::vector<BindGroupEntryKey>& rhs);
+	void ResetRenderBindGroupCaches();
+	void ResetComputeBindGroupCaches();
+	void SetRenderBindGroup(
+		uint32_t index, const void* pipeline, const std::vector<BindGroupEntryKey>& entries, const wgpu::BindGroupDescriptor& desc);
+	void SetComputeBindGroup(
+		uint32_t index, const void* pipeline, const std::vector<BindGroupEntryKey>& entries, const wgpu::BindGroupDescriptor& desc);
 
 public:
 	CommandListWebGPU(wgpu::Device device);
@@ -42,6 +71,8 @@ public:
 
 	void CopyTexture(
 		Texture* src, Texture* dst, const Vec3I& srcPos, const Vec3I& dstPos, const Vec3I& size, int srcLayer, int dstLayer) override;
+
+	void GenerateMipMap(Texture* src) override;
 
 	void CopyBuffer(Buffer* src, Buffer* dst) override;
 

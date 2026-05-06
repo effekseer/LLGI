@@ -25,6 +25,73 @@ bool NeedsTextureSampler(TextureWebGPU* texture)
 }
 } // namespace
 
+bool CommandListWebGPU::Equals(const std::vector<BindGroupEntryKey>& lhs, const std::vector<BindGroupEntryKey>& rhs)
+{
+	if (lhs.size() != rhs.size())
+	{
+		return false;
+	}
+
+	for (size_t i = 0; i < lhs.size(); i++)
+	{
+		if (lhs[i].binding != rhs[i].binding || lhs[i].resource != rhs[i].resource || lhs[i].offset != rhs[i].offset ||
+			lhs[i].size != rhs[i].size || lhs[i].wrapMode != rhs[i].wrapMode || lhs[i].minMagFilter != rhs[i].minMagFilter)
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
+void CommandListWebGPU::ResetRenderBindGroupCaches()
+{
+	for (auto& cache : renderBindGroupCaches_)
+	{
+		cache.pipeline = nullptr;
+		cache.entries.clear();
+		cache.bindGroup = nullptr;
+	}
+}
+
+void CommandListWebGPU::ResetComputeBindGroupCaches()
+{
+	for (auto& cache : computeBindGroupCaches_)
+	{
+		cache.pipeline = nullptr;
+		cache.entries.clear();
+		cache.bindGroup = nullptr;
+	}
+}
+
+void CommandListWebGPU::SetRenderBindGroup(
+	uint32_t index, const void* pipeline, const std::vector<BindGroupEntryKey>& entries, const wgpu::BindGroupDescriptor& desc)
+{
+	auto& cache = renderBindGroupCaches_[index];
+	if (cache.bindGroup == nullptr || cache.pipeline != pipeline || !Equals(cache.entries, entries))
+	{
+		cache.pipeline = pipeline;
+		cache.entries = entries;
+		cache.bindGroup = device_.CreateBindGroup(&desc);
+	}
+
+	renderPassEncorder_.SetBindGroup(index, cache.bindGroup);
+}
+
+void CommandListWebGPU::SetComputeBindGroup(
+	uint32_t index, const void* pipeline, const std::vector<BindGroupEntryKey>& entries, const wgpu::BindGroupDescriptor& desc)
+{
+	auto& cache = computeBindGroupCaches_[index];
+	if (cache.bindGroup == nullptr || cache.pipeline != pipeline || !Equals(cache.entries, entries))
+	{
+		cache.pipeline = pipeline;
+		cache.entries = entries;
+		cache.bindGroup = device_.CreateBindGroup(&desc);
+	}
+
+	computePassEncorder_.SetBindGroup(index, cache.bindGroup);
+}
+
 CommandListWebGPU::CommandListWebGPU(wgpu::Device device) : device_(device)
 {
 	wgpu::TextureDescriptor fallbackTextureDesc{};
@@ -85,6 +152,8 @@ void CommandListWebGPU::Begin()
 {
 	wgpu::CommandEncoderDescriptor desc = {};
 	commandEncorder_ = device_.CreateCommandEncoder(&desc);
+	ResetRenderBindGroupCaches();
+	ResetComputeBindGroupCaches();
 
 	CommandList::Begin();
 }
@@ -106,6 +175,7 @@ void CommandListWebGPU::BeginRenderPass(RenderPass* renderPass)
 	const auto& desc = rp->GetDescriptor();
 
 	renderPassEncorder_ = commandEncorder_.BeginRenderPass(&desc);
+	ResetRenderBindGroupCaches();
 	renderPassEncorder_.SetViewport(0.0f, 0.0f, static_cast<float>(rp->GetScreenSize().X), static_cast<float>(rp->GetScreenSize().Y), 0.0f, 1.0f);
 
 	CommandList::BeginRenderPass(renderPass);
@@ -130,6 +200,7 @@ void CommandListWebGPU::BeginComputePass()
 
 	wgpu::ComputePassDescriptor desc{};
 	computePassEncorder_ = commandEncorder_.BeginComputePass(&desc);
+	ResetComputeBindGroupCaches();
 }
 
 void CommandListWebGPU::EndComputePass()
@@ -163,24 +234,25 @@ void CommandListWebGPU::Draw(int32_t primitiveCount, int32_t instanceCount)
 	auto ib = static_cast<BufferWebGPU*>(bib.indexBuffer);
 	auto pip = static_cast<PipelineStateWebGPU*>(bpip);
 
-	if (vb != nullptr)
+	if (vb != nullptr && isVBDirtied)
 	{
 		renderPassEncorder_.SetVertexBuffer(0, vb->GetBuffer(), bvb.offset, bvb.vertexBuffer->GetSize() - bvb.offset);
 	}
 
-	if (ib != nullptr)
+	if (ib != nullptr && isIBDirtied)
 	{
 		const auto format = bib.stride == 2 ? wgpu::IndexFormat::Uint16 : wgpu::IndexFormat::Uint32;
 		renderPassEncorder_.SetIndexBuffer(ib->GetBuffer(), format, bib.offset, ib->GetSize() - bib.offset);
 	}
 
-	if (pip != nullptr)
+	if (pip != nullptr && isPipDirtied)
 	{
 		renderPassEncorder_.SetPipeline(pip->GetRenderPipeline());
 		renderPassEncorder_.SetStencilReference(pip->StencilRef);
 	}
 
 	std::vector<wgpu::BindGroupEntry> constantBindGroupEntries;
+	std::vector<BindGroupEntryKey> constantBindGroupEntryKeys;
 
 	for (size_t unit_ind = 0; unit_ind < constantBuffers_.size(); unit_ind++)
 	{
@@ -200,6 +272,8 @@ void CommandListWebGPU::Draw(int32_t primitiveCount, int32_t instanceCount)
 		entry.size = cb->GetAllocatedSize() - cb->GetOffset();
 		entry.offset = cb->GetOffset();
 		constantBindGroupEntries.push_back(entry);
+		constantBindGroupEntryKeys.push_back(
+			{static_cast<uint32_t>(unit_ind), cb, static_cast<uint64_t>(entry.offset), static_cast<uint64_t>(entry.size), 0, 0});
 	}
 
 	if (!constantBindGroupEntries.empty())
@@ -208,12 +282,13 @@ void CommandListWebGPU::Draw(int32_t primitiveCount, int32_t instanceCount)
 		constantBindGroupDesc.layout = pip->GetRenderPipeline().GetBindGroupLayout(0);
 		constantBindGroupDesc.entries = constantBindGroupEntries.data();
 		constantBindGroupDesc.entryCount = constantBindGroupEntries.size();
-		auto constantBindGroup = device_.CreateBindGroup(&constantBindGroupDesc);
-		renderPassEncorder_.SetBindGroup(0, constantBindGroup);
+		SetRenderBindGroup(0, pip, constantBindGroupEntryKeys, constantBindGroupDesc);
 	}
 
 	std::vector<wgpu::BindGroupEntry> textureGroupEntries;
 	std::vector<wgpu::BindGroupEntry> samplerGroupEntries;
+	std::vector<BindGroupEntryKey> textureGroupEntryKeys;
+	std::vector<BindGroupEntryKey> samplerGroupEntryKeys;
 
 	for (int unit_ind = 0; unit_ind < static_cast<int32_t>(currentTextures_.size()); unit_ind++)
 	{
@@ -228,6 +303,8 @@ void CommandListWebGPU::Draw(int32_t primitiveCount, int32_t instanceCount)
 		textureEntry.binding = unit_ind;
 		textureEntry.textureView = texture != nullptr ? texture->GetTextureView() : fallbackTextureView_;
 		textureGroupEntries.push_back(textureEntry);
+		textureGroupEntryKeys.push_back(
+			{static_cast<uint32_t>(unit_ind), texture, 0, 0, static_cast<int32_t>(wm), static_cast<int32_t>(mm)});
 
 		wgpu::BindGroupEntry samplerEntry = {};
 		if (NeedsTextureSampler(texture))
@@ -239,6 +316,7 @@ void CommandListWebGPU::Draw(int32_t primitiveCount, int32_t instanceCount)
 			samplerEntry.binding = unit_ind;
 			samplerEntry.sampler = samplers_[wm][mm];
 			samplerGroupEntries.push_back(samplerEntry);
+			samplerGroupEntryKeys.push_back({static_cast<uint32_t>(unit_ind), nullptr, 0, 0, wm, mm});
 		}
 	}
 
@@ -260,6 +338,12 @@ void CommandListWebGPU::Draw(int32_t primitiveCount, int32_t instanceCount)
 		bufferEntry.offset = buffer->GetOffset();
 		bufferEntry.size = buffer->GetSize();
 		textureGroupEntries.push_back(bufferEntry);
+		textureGroupEntryKeys.push_back({static_cast<uint32_t>(unit_ind),
+										 buffer,
+										 static_cast<uint64_t>(bufferEntry.offset),
+										 static_cast<uint64_t>(bufferEntry.size),
+										 0,
+										 0});
 	}
 
 	if (!textureGroupEntries.empty())
@@ -268,8 +352,7 @@ void CommandListWebGPU::Draw(int32_t primitiveCount, int32_t instanceCount)
 		textureBindGroupDesc.layout = pip->GetRenderPipeline().GetBindGroupLayout(1);
 		textureBindGroupDesc.entries = textureGroupEntries.data();
 		textureBindGroupDesc.entryCount = textureGroupEntries.size();
-		auto textureBindGroup = device_.CreateBindGroup(&textureBindGroupDesc);
-		renderPassEncorder_.SetBindGroup(1, textureBindGroup);
+		SetRenderBindGroup(1, pip, textureGroupEntryKeys, textureBindGroupDesc);
 	}
 
 	if (!samplerGroupEntries.empty())
@@ -278,8 +361,7 @@ void CommandListWebGPU::Draw(int32_t primitiveCount, int32_t instanceCount)
 		samplerBindGroupDesc.layout = pip->GetRenderPipeline().GetBindGroupLayout(2);
 		samplerBindGroupDesc.entries = samplerGroupEntries.data();
 		samplerBindGroupDesc.entryCount = samplerGroupEntries.size();
-		auto samplerBindGroup = device_.CreateBindGroup(&samplerBindGroupDesc);
-		renderPassEncorder_.SetBindGroup(2, samplerBindGroup);
+		SetRenderBindGroup(2, pip, samplerGroupEntryKeys, samplerBindGroupDesc);
 	}
 
 	int indexPerPrim = 0;
@@ -316,14 +398,20 @@ void CommandListWebGPU::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ,
 		return;
 	}
 
+	bool isComputePassStarted = false;
 	if (computePassEncorder_ == nullptr)
 	{
 		BeginComputePass();
+		isComputePassStarted = true;
 	}
 
-	computePassEncorder_.SetPipeline(pip->GetComputePipeline());
+	if (isComputePassStarted || isPipDirtied)
+	{
+		computePassEncorder_.SetPipeline(pip->GetComputePipeline());
+	}
 
 	std::vector<wgpu::BindGroupEntry> constantBindGroupEntries;
+	std::vector<BindGroupEntryKey> constantBindGroupEntryKeys;
 	for (size_t unit_ind = 0; unit_ind < constantBuffers_.size(); unit_ind++)
 	{
 		auto cb = static_cast<BufferWebGPU*>(constantBuffers_[unit_ind]);
@@ -342,6 +430,8 @@ void CommandListWebGPU::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ,
 		entry.size = cb->GetAllocatedSize() - cb->GetOffset();
 		entry.offset = cb->GetOffset();
 		constantBindGroupEntries.push_back(entry);
+		constantBindGroupEntryKeys.push_back(
+			{static_cast<uint32_t>(unit_ind), cb, static_cast<uint64_t>(entry.offset), static_cast<uint64_t>(entry.size), 0, 0});
 	}
 
 	if (!constantBindGroupEntries.empty())
@@ -350,12 +440,13 @@ void CommandListWebGPU::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ,
 		desc.layout = pip->GetComputePipeline().GetBindGroupLayout(0);
 		desc.entries = constantBindGroupEntries.data();
 		desc.entryCount = constantBindGroupEntries.size();
-		auto bindGroup = device_.CreateBindGroup(&desc);
-		computePassEncorder_.SetBindGroup(0, bindGroup);
+		SetComputeBindGroup(0, pip, constantBindGroupEntryKeys, desc);
 	}
 
 	std::vector<wgpu::BindGroupEntry> textureGroupEntries;
 	std::vector<wgpu::BindGroupEntry> samplerAndBufferGroupEntries;
+	std::vector<BindGroupEntryKey> textureGroupEntryKeys;
+	std::vector<BindGroupEntryKey> samplerAndBufferGroupEntryKeys;
 
 	for (int unit_ind = 0; unit_ind < static_cast<int32_t>(currentTextures_.size()); unit_ind++)
 	{
@@ -373,6 +464,8 @@ void CommandListWebGPU::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ,
 		textureEntry.binding = unit_ind;
 		textureEntry.textureView = texture != nullptr ? texture->GetTextureView() : fallbackTextureView_;
 		textureGroupEntries.push_back(textureEntry);
+		textureGroupEntryKeys.push_back(
+			{static_cast<uint32_t>(unit_ind), texture, 0, 0, static_cast<int32_t>(wm), static_cast<int32_t>(mm)});
 
 		if (NeedsTextureSampler(texture))
 		{
@@ -384,6 +477,7 @@ void CommandListWebGPU::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ,
 			samplerEntry.binding = unit_ind;
 			samplerEntry.sampler = samplers_[wm][mm];
 			samplerAndBufferGroupEntries.push_back(samplerEntry);
+			samplerAndBufferGroupEntryKeys.push_back({static_cast<uint32_t>(unit_ind), nullptr, 0, 0, wm, mm});
 		}
 	}
 
@@ -405,6 +499,12 @@ void CommandListWebGPU::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ,
 		entry.offset = buffer->GetOffset();
 		entry.size = buffer->GetSize();
 		samplerAndBufferGroupEntries.push_back(entry);
+		samplerAndBufferGroupEntryKeys.push_back({static_cast<uint32_t>(unit_ind),
+												  buffer,
+												  static_cast<uint64_t>(entry.offset),
+												  static_cast<uint64_t>(entry.size),
+												  0,
+												  0});
 	}
 
 	if (!textureGroupEntries.empty())
@@ -413,8 +513,7 @@ void CommandListWebGPU::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ,
 		desc.layout = pip->GetComputePipeline().GetBindGroupLayout(1);
 		desc.entries = textureGroupEntries.data();
 		desc.entryCount = textureGroupEntries.size();
-		auto bindGroup = device_.CreateBindGroup(&desc);
-		computePassEncorder_.SetBindGroup(1, bindGroup);
+		SetComputeBindGroup(1, pip, textureGroupEntryKeys, desc);
 	}
 
 	if (!samplerAndBufferGroupEntries.empty())
@@ -423,8 +522,7 @@ void CommandListWebGPU::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ,
 		desc.layout = pip->GetComputePipeline().GetBindGroupLayout(2);
 		desc.entries = samplerAndBufferGroupEntries.data();
 		desc.entryCount = samplerAndBufferGroupEntries.size();
-		auto bindGroup = device_.CreateBindGroup(&desc);
-		computePassEncorder_.SetBindGroup(2, bindGroup);
+		SetComputeBindGroup(2, pip, samplerAndBufferGroupEntryKeys, desc);
 	}
 
 	computePassEncorder_.DispatchWorkgroups(groupX, groupY, groupZ);
@@ -471,6 +569,25 @@ void CommandListWebGPU::CopyTexture(
 	extend3d.depthOrArrayLayers = size.Z;
 
 	commandEncorder_.CopyTextureToTexture(&srcTexCopy, &dstTexCopy, &extend3d);
+}
+
+void CommandListWebGPU::GenerateMipMap(Texture* src)
+{
+	if (isInRenderPass_)
+	{
+		Log(LogType::Error, "Please call GenerateMipMap outside of RenderPass");
+		return;
+	}
+
+	EndComputePass();
+
+	auto srcTex = static_cast<TextureWebGPU*>(src);
+	if (srcTex == nullptr)
+	{
+		return;
+	}
+
+	srcTex->GenerateMipMaps(commandEncorder_);
 }
 
 void CommandListWebGPU::CopyBuffer(Buffer* src, Buffer* dst)

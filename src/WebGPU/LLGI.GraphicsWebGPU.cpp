@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <limits>
 #include <thread>
 
 #if defined(__EMSCRIPTEN__)
@@ -64,6 +65,26 @@ void WaitForQueue(wgpu::Queue& queue)
 	if (!succeeded)
 	{
 		Log(LogType::Warning, "Timed out or failed while waiting for WebGPU queue completion.");
+	}
+}
+#else
+void WaitForQueue(wgpu::Instance& instance, wgpu::Queue& queue)
+{
+	if (instance == nullptr)
+	{
+		return;
+	}
+
+	bool succeeded = false;
+	auto future = queue.OnSubmittedWorkDone(wgpu::CallbackMode::WaitAnyOnly,
+											[&succeeded](wgpu::QueueWorkDoneStatus status, wgpu::StringView) {
+												succeeded = status == wgpu::QueueWorkDoneStatus::Success;
+											});
+	instance.WaitAny(future, std::numeric_limits<uint64_t>::max());
+
+	if (!succeeded)
+	{
+		Log(LogType::Warning, "Failed while waiting for WebGPU queue completion.");
 	}
 }
 #endif
@@ -124,7 +145,11 @@ void GraphicsWebGPU::WaitFinish()
 		WaitForQueue(queue_);
 	}
 #else
-	if (device_ != nullptr)
+	if (queue_ != nullptr && instance_ != nullptr)
+	{
+		WaitForQueue(instance_, queue_);
+	}
+	else if (device_ != nullptr)
 	{
 		device_.Tick();
 	}
@@ -312,7 +337,6 @@ std::vector<uint8_t> GraphicsWebGPU::CaptureRenderTarget(Texture* renderTarget)
 
 	auto commandBuffer = encoder.Finish();
 	queue_.Submit(1, &commandBuffer);
-	WaitFinish();
 
 	bool completed = false;
 	bool succeeded = false;

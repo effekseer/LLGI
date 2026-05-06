@@ -6,9 +6,73 @@
 #include "LLGI.RenderPassDX12.h"
 #include "LLGI.TextureDX12.h"
 #include "LLGI.QueryDX12.h"
+#include "LLGI.DX12MipmapShader.h"
+#include <algorithm>
 
 namespace LLGI
 {
+namespace
+{
+
+bool CanGenerateMipMap(const TextureDX12* texture)
+{
+	return texture != nullptr && texture->GetMipmapCount() > 1 && texture->GetParameter().Dimension == 2 &&
+		   texture->GetParameter().SampleCount == 1;
+}
+
+D3D12_SHADER_RESOURCE_VIEW_DESC CreateMipmapSRVDesc(const TextureDX12* texture, int32_t mip)
+{
+	D3D12_SHADER_RESOURCE_VIEW_DESC desc = {};
+	desc.Format = DirectX12::GetShaderResourceViewFormat(texture->GetDXGIFormat());
+	desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	desc.Texture2D.MostDetailedMip = mip - 1;
+	desc.Texture2D.MipLevels = 1;
+	desc.Texture2D.ResourceMinLODClamp = 0.0f;
+	return desc;
+}
+
+D3D12_RENDER_TARGET_VIEW_DESC CreateMipmapRTVDesc(const TextureDX12* texture, int32_t mip)
+{
+	D3D12_RENDER_TARGET_VIEW_DESC desc = {};
+	desc.Format = texture->GetDXGIFormat();
+	desc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+	desc.Texture2D.MipSlice = mip;
+	desc.Texture2D.PlaneSlice = 0;
+	return desc;
+}
+
+D3D12_RESOURCE_BARRIER CreateMipmapTransitionBarrier(
+	TextureDX12* texture, int32_t mip, D3D12_RESOURCE_STATES before, D3D12_RESOURCE_STATES after)
+{
+	D3D12_RESOURCE_BARRIER barrier = {};
+	barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	barrier.Transition.pResource = texture->Get();
+	barrier.Transition.Subresource = mip;
+	barrier.Transition.StateBefore = before;
+	barrier.Transition.StateAfter = after;
+	return barrier;
+}
+
+D3D12_VIEWPORT CreateMipmapViewport(int32_t width, int32_t height)
+{
+	D3D12_VIEWPORT viewport = {};
+	viewport.Width = static_cast<float>(width);
+	viewport.Height = static_cast<float>(height);
+	viewport.MinDepth = 0.0f;
+	viewport.MaxDepth = 1.0f;
+	return viewport;
+}
+
+D3D12_RECT CreateMipmapScissor(int32_t width, int32_t height)
+{
+	D3D12_RECT scissor = {};
+	scissor.right = width;
+	scissor.bottom = height;
+	return scissor;
+}
+
+} // namespace
 
 D3D12_SHADER_RESOURCE_VIEW_DESC CommandListDX12::GetSRVDescFromTexture(const TextureDX12* texture)
 {
@@ -17,7 +81,7 @@ D3D12_SHADER_RESOURCE_VIEW_DESC CommandListDX12::GetSRVDescFromTexture(const Tex
 	if (texture->GetParameter().Dimension == 3)
 	{
 		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
-		srvDesc.Texture3D.MipLevels = 1;
+		srvDesc.Texture3D.MipLevels = texture->GetMipmapCount();
 		srvDesc.Texture3D.MostDetailedMip = 0;
 		srvDesc.Texture3D.ResourceMinLODClamp = 0.0f;
 	}
@@ -33,7 +97,7 @@ D3D12_SHADER_RESOURCE_VIEW_DESC CommandListDX12::GetSRVDescFromTexture(const Tex
 		}
 		srvDesc.Texture2DArray.ArraySize = texture->GetParameter().Size.Z;
 		srvDesc.Texture2DArray.FirstArraySlice = 0;
-		srvDesc.Texture2DArray.MipLevels = 1;
+		srvDesc.Texture2DArray.MipLevels = texture->GetMipmapCount();
 		srvDesc.Texture2DArray.MostDetailedMip = 0;
 		srvDesc.Texture2DArray.PlaneSlice = 0;
 		srvDesc.Texture2DArray.ResourceMinLODClamp = 0.0f;
@@ -48,13 +112,115 @@ D3D12_SHADER_RESOURCE_VIEW_DESC CommandListDX12::GetSRVDescFromTexture(const Tex
 		{
 			srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 		}
-		srvDesc.Texture2D.MipLevels = 1;
+		srvDesc.Texture2D.MipLevels = texture->GetMipmapCount();
 		srvDesc.Texture2D.MostDetailedMip = 0;
 	}
 
 	srvDesc.Format = DirectX12::GetShaderResourceViewFormat(texture->GetDXGIFormat());
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	return srvDesc;
+}
+
+bool CommandListDX12::CreateMipmapRootSignature()
+{
+	if (mipmapRootSignature_ != nullptr)
+	{
+		return true;
+	}
+
+	D3D12_DESCRIPTOR_RANGE range = {};
+	range.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+	range.NumDescriptors = 1;
+	range.BaseShaderRegister = 0;
+	range.RegisterSpace = 0;
+	range.OffsetInDescriptorsFromTableStart = 0;
+
+	D3D12_ROOT_PARAMETER rootParameter = {};
+	rootParameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+	rootParameter.DescriptorTable.NumDescriptorRanges = 1;
+	rootParameter.DescriptorTable.pDescriptorRanges = &range;
+	rootParameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+	D3D12_STATIC_SAMPLER_DESC sampler = {};
+	sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+	sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+	sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+	sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+	sampler.MipLODBias = 0.0f;
+	sampler.MaxAnisotropy = 1;
+	sampler.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+	sampler.BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK;
+	sampler.MinLOD = 0.0f;
+	sampler.MaxLOD = D3D12_FLOAT32_MAX;
+	sampler.ShaderRegister = 0;
+	sampler.RegisterSpace = 0;
+	sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+	D3D12_ROOT_SIGNATURE_DESC desc = {};
+	desc.NumParameters = 1;
+	desc.pParameters = &rootParameter;
+	desc.NumStaticSamplers = 1;
+	desc.pStaticSamplers = &sampler;
+	desc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+
+	ID3DBlob* signature = nullptr;
+	ID3DBlob* error = nullptr;
+	auto hr = D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error);
+	if (FAILED(hr))
+	{
+		SafeRelease(error);
+		return false;
+	}
+
+	hr = graphics_->GetDevice()->CreateRootSignature(
+		0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&mipmapRootSignature_));
+	SafeRelease(signature);
+	SafeRelease(error);
+	return SUCCEEDED(hr);
+}
+
+ID3D12PipelineState* CommandListDX12::GetMipmapPipelineState(DXGI_FORMAT format)
+{
+	auto found = mipmapPipelineStates_.find(format);
+	if (found != mipmapPipelineStates_.end())
+	{
+		return found->second;
+	}
+
+	if (!CreateMipmapRootSignature())
+	{
+		return nullptr;
+	}
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC desc = {};
+	desc.pRootSignature = mipmapRootSignature_;
+	desc.VS.pShaderBytecode = DX12MipmapShader::VertexShader;
+	desc.VS.BytecodeLength = DX12MipmapShader::VertexShaderSize;
+	desc.PS.pShaderBytecode = DX12MipmapShader::PixelShader;
+	desc.PS.BytecodeLength = DX12MipmapShader::PixelShaderSize;
+	desc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+	desc.SampleMask = UINT_MAX;
+	desc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+	desc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+	desc.RasterizerState.DepthClipEnable = TRUE;
+	desc.DepthStencilState.DepthEnable = FALSE;
+	desc.DepthStencilState.StencilEnable = FALSE;
+	desc.InputLayout.NumElements = 0;
+	desc.InputLayout.pInputElementDescs = nullptr;
+	desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	desc.NumRenderTargets = 1;
+	desc.RTVFormats[0] = format;
+	desc.SampleDesc.Count = 1;
+
+	ID3D12PipelineState* pipelineState = nullptr;
+	auto hr = graphics_->GetDevice()->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(&pipelineState));
+	if (FAILED(hr))
+	{
+		return nullptr;
+	}
+
+	mipmapPipelineStates_[format] = pipelineState;
+	return pipelineState;
 }
 
 D3D12_SAMPLER_DESC CommandListDX12::GeSamplerDescFromBindingTexture(const CommandList::BindingTexture& texture)
@@ -142,6 +308,12 @@ CommandListDX12::CommandListDX12()
 CommandListDX12::~CommandListDX12()
 {
 	SafeRelease(fence_);
+	SafeRelease(mipmapRootSignature_);
+	for (auto& pipelineState : mipmapPipelineStates_)
+	{
+		SafeRelease(pipelineState.second);
+	}
+	mipmapPipelineStates_.clear();
 
 	if (fenceEvent_ != nullptr)
 	{
@@ -672,6 +844,94 @@ void CommandListDX12::CopyTexture(
 
 	RegisterReferencedObject(src);
 	RegisterReferencedObject(dst);
+}
+
+void CommandListDX12::GenerateMipMap(Texture* src)
+{
+	if (isInRenderPass_)
+	{
+		Log(LogType::Error, "Please call GenerateMipMap outside of RenderPass");
+		return;
+	}
+
+	auto srcTex = static_cast<TextureDX12*>(src);
+	if (!CanGenerateMipMap(srcTex))
+	{
+		return;
+	}
+
+	auto pipelineState = GetMipmapPipelineState(srcTex->GetDXGIFormat());
+	if (pipelineState == nullptr)
+	{
+		Log(LogType::Error, "Failed to create a DX12 mipmap pipeline.");
+		return;
+	}
+
+	srcTex->ResourceBarrier(currentCommandList_, D3D12_RESOURCE_STATE_GENERIC_READ);
+
+	currentCommandList_->SetGraphicsRootSignature(mipmapRootSignature_);
+	currentCommandList_->SetPipelineState(pipelineState);
+	currentCommandList_->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	const auto mipmapCount = srcTex->GetMipmapCount();
+	auto mipWidth = srcTex->GetSizeAs2D().X;
+	auto mipHeight = srcTex->GetSizeAs2D().Y;
+
+	for (int32_t mip = 1; mip < mipmapCount; mip++)
+	{
+		const auto dstWidth = std::max(1, mipWidth / 2);
+		const auto dstHeight = std::max(1, mipHeight / 2);
+
+		ID3D12DescriptorHeap* srvHeap = nullptr;
+		std::array<D3D12_CPU_DESCRIPTOR_HANDLE, 32> cpuSrvHandles;
+		std::array<D3D12_GPU_DESCRIPTOR_HANDLE, 32> gpuSrvHandles;
+		if (!cbDescriptorHeap_->Allocate(srvHeap, cpuSrvHandles, gpuSrvHandles, 1))
+		{
+			Log(LogType::Error, "Failed to allocate a DX12 mipmap SRV descriptor.");
+			return;
+		}
+
+		ID3D12DescriptorHeap* rtvHeap = nullptr;
+		std::array<D3D12_CPU_DESCRIPTOR_HANDLE, 32> cpuRtvHandles;
+		std::array<D3D12_GPU_DESCRIPTOR_HANDLE, 32> gpuRtvHandles;
+		if (!rtDescriptorHeap_->Allocate(rtvHeap, cpuRtvHandles, gpuRtvHandles, 1))
+		{
+			Log(LogType::Error, "Failed to allocate a DX12 mipmap RTV descriptor.");
+			return;
+		}
+
+		const auto srvDesc = CreateMipmapSRVDesc(srcTex, mip);
+		graphics_->GetDevice()->CreateShaderResourceView(srcTex->Get(), &srvDesc, cpuSrvHandles[0]);
+
+		const auto rtvDesc = CreateMipmapRTVDesc(srcTex, mip);
+		graphics_->GetDevice()->CreateRenderTargetView(srcTex->Get(), &rtvDesc, cpuRtvHandles[0]);
+
+		auto barrier =
+			CreateMipmapTransitionBarrier(srcTex, mip, D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_RENDER_TARGET);
+		currentCommandList_->ResourceBarrier(1, &barrier);
+
+		ID3D12DescriptorHeap* heaps[] = {srvHeap};
+		currentCommandList_->SetDescriptorHeaps(1, heaps);
+		currentCommandList_->SetGraphicsRootDescriptorTable(0, gpuSrvHandles[0]);
+		currentCommandList_->OMSetRenderTargets(1, &cpuRtvHandles[0], FALSE, nullptr);
+
+		const auto viewport = CreateMipmapViewport(dstWidth, dstHeight);
+		currentCommandList_->RSSetViewports(1, &viewport);
+
+		const auto scissor = CreateMipmapScissor(dstWidth, dstHeight);
+		currentCommandList_->RSSetScissorRects(1, &scissor);
+
+		currentCommandList_->DrawInstanced(3, 1, 0, 0);
+
+		barrier =
+			CreateMipmapTransitionBarrier(srcTex, mip, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_GENERIC_READ);
+		currentCommandList_->ResourceBarrier(1, &barrier);
+
+		mipWidth = dstWidth;
+		mipHeight = dstHeight;
+	}
+
+	RegisterReferencedObject(src);
 }
 
 void CommandListDX12::CopyBuffer(Buffer* src, Buffer* dst)

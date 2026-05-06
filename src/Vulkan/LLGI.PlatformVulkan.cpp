@@ -1,6 +1,8 @@
 #include "LLGI.PlatformVulkan.h"
 #include "LLGI.GraphicsVulkan.h"
 #include "LLGI.TextureVulkan.h"
+#include <algorithm>
+#include <cstring>
 #include <sstream>
 
 #ifdef _WIN32
@@ -55,6 +57,10 @@ bool PlatformVulkan::CreateSwapChain(Vec2I windowSize, bool waitVSync)
 				if (swapBuffers[i].fence)
 				{
 					vkDevice_.destroyFence(swapBuffers[i].fence);
+				}
+				if (swapBuffers[i].renderComplete)
+				{
+					vkDevice_.destroySemaphore(swapBuffers[i].renderComplete);
 				}
 
 				SafeRelease(swapBuffers[i].texture);
@@ -160,6 +166,7 @@ bool PlatformVulkan::CreateSwapChain(Vec2I windowSize, bool waitVSync)
 			viewCreateInfo.image = swapChainImages[i];
 			swapBuffers[i].view = vkDevice_.createImageView(viewCreateInfo);
 			swapBuffers[i].fence = vk::Fence();
+			swapBuffers[i].renderComplete = vkDevice_.createSemaphore(vk::SemaphoreCreateInfo());
 
 			swapBuffers[i].texture = new TextureVulkan();
 			if (!swapBuffers[i].texture->InitializeAsScreen(swapBuffers[i].image, swapBuffers[i].view, surfaceFormat, swapchainSize_))
@@ -306,6 +313,10 @@ void PlatformVulkan::Reset()
 			{
 				vkDevice_.destroyFence(swapBuffer.fence);
 			}
+			if (swapBuffer.renderComplete)
+			{
+				vkDevice_.destroySemaphore(swapBuffer.renderComplete);
+			}
 
 			SafeRelease(swapBuffer.texture);
 		}
@@ -331,12 +342,6 @@ void PlatformVulkan::Reset()
 		{
 			vkDevice_.destroySemaphore(vkPresentComplete_);
 			vkPresentComplete_ = nullptr;
-		}
-
-		if (vkRenderComplete_)
-		{
-			vkDevice_.destroySemaphore(vkRenderComplete_);
-			vkRenderComplete_ = nullptr;
 		}
 
 		if (vkCmdBuffers.size() > 0)
@@ -481,9 +486,8 @@ bool PlatformVulkan::Initialize(Window* window, bool waitVSync)
 	vk::ApplicationInfo appInfo;
 	appInfo.pApplicationName = "Vulkan";
 	appInfo.pEngineName = "Vulkan";
-	appInfo.apiVersion = 1;
 	appInfo.engineVersion = 1;
-	appInfo.apiVersion = VK_API_VERSION_1_0;
+	appInfo.apiVersion = VK_API_VERSION_1_1;
 
 	// specify extension
 	const std::vector<const char*> extensions = {
@@ -626,12 +630,21 @@ bool PlatformVulkan::Initialize(Window* window, bool waitVSync)
 		queueCreateInfo.pQueuePriorities = queuePriorities;
 		queueFamilyIndex_ = queueCreateInfo.queueFamilyIndex;
 
-		const std::vector<const char*> enabledExtensions = {
+		std::vector<const char*> enabledExtensions = {
 			VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 #if !defined(NDEBUG)
 		// VK_EXT_DEBUG_MARKER_EXTENSION_NAME,
 #endif
 		};
+#if defined(VK_KHR_MAINTENANCE1_EXTENSION_NAME)
+		const auto deviceExtensions = vkPhysicalDevice.enumerateDeviceExtensionProperties();
+		if (std::any_of(deviceExtensions.begin(), deviceExtensions.end(), [](const vk::ExtensionProperties& extension) {
+				return std::strcmp(extension.extensionName, VK_KHR_MAINTENANCE1_EXTENSION_NAME) == 0;
+			}))
+		{
+			enabledExtensions.push_back(VK_KHR_MAINTENANCE1_EXTENSION_NAME);
+		}
+#endif
 		vk::DeviceCreateInfo deviceCreateInfo;
 		deviceCreateInfo.queueCreateInfoCount = 1;
 		deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
@@ -639,19 +652,6 @@ bool PlatformVulkan::Initialize(Window* window, bool waitVSync)
 		deviceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(enabledExtensions.size());
 		deviceCreateInfo.ppEnabledExtensionNames = enabledExtensions.data();
 
-#if !defined(NDEBUG)
-		if (optimalLayers.size() > 0)
-		{
-			deviceCreateInfo.enabledLayerCount = static_cast<uint32_t>(optimalLayers.size());
-			deviceCreateInfo.ppEnabledLayerNames = optimalLayers.data();
-		}
-		else
-		{
-			deviceCreateInfo.enabledLayerCount = 0;
-		}
-#else
-		deviceCreateInfo.enabledLayerCount = 0;
-#endif
 		vkDevice_ = vkPhysicalDevice.createDevice(deviceCreateInfo);
 
 #if !defined(NDEBUG)
@@ -711,8 +711,6 @@ bool PlatformVulkan::Initialize(Window* window, bool waitVSync)
 		vk::SemaphoreCreateInfo semaphoreCreateInfo;
 
 		vkPresentComplete_ = vkDevice_.createSemaphore(semaphoreCreateInfo);
-
-		vkRenderComplete_ = vkDevice_.createSemaphore(semaphoreCreateInfo);
 
 		// create command buffer
 		vk::CommandBufferAllocateInfo allocInfo;
@@ -821,7 +819,7 @@ void PlatformVulkan::Present()
 
 		// set a semaphore which notify to finish to execute commands
 		submitInfo.signalSemaphoreCount = 1;
-		submitInfo.pSignalSemaphores = &vkRenderComplete_;
+		submitInfo.pSignalSemaphores = &swapBuffers[frameIndex].renderComplete;
 
 		vk::Fence fence = GetSubmitFence(true);
 		vkQueue.submit(submitInfo, fence);
@@ -832,7 +830,7 @@ void PlatformVulkan::Present()
 		}
 	}
 
-	const auto result = Present(vkRenderComplete_);
+	const auto result = Present(swapBuffers[frameIndex].renderComplete);
 
 	// TODO optimize it
 	if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR)

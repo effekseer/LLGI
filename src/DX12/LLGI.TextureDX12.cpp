@@ -36,6 +36,7 @@ TextureDX12::TextureDX12(ID3D12Resource* textureResource, ID3D12Device* device, 
 	format_ = ConvertFormat(desc.Format);
 	texture_size_ = Vec3I(static_cast<int32_t>(desc.Width), static_cast<int32_t>(desc.Height), 1);
 	cpu_memory_size_ = GetTextureMemorySize(format_, {texture_size_.X, texture_size_.Y, 1});
+	mipmapCount_ = desc.MipLevels;
 
 	UINT64 size = 0;
 	device_->GetCopyableFootprints(&desc, 0, 1, 0, &footprint_, nullptr, nullptr, &size);
@@ -69,6 +70,7 @@ bool TextureDX12::Initialize(const TextureParameter& parameter)
 	texture_size_ = parameter.Size;
 	samplingCount_ = parameter.SampleCount;
 	parameter_ = parameter;
+	mipmapCount_ = parameter.MipLevelCount;
 
 	type_ = TextureType::Color;
 
@@ -101,6 +103,11 @@ bool TextureDX12::Initialize(const TextureParameter& parameter)
 		resourceFlag |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 	}
 
+	if (parameter.MipLevelCount > 1 && type_ == TextureType::Color && parameter.Dimension == 2 && parameter.SampleCount == 1)
+	{
+		resourceFlag |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+	}
+
 	if (type_ == TextureType::Render)
 	{
 		texture_ = CreateResourceBuffer(device_,
@@ -110,7 +117,8 @@ bool TextureDX12::Initialize(const TextureParameter& parameter)
 										D3D12_RESOURCE_STATE_GENERIC_READ,
 										resourceFlag,
 										parameter.Size,
-										parameter.SampleCount);
+										parameter.SampleCount,
+										parameter.MipLevelCount);
 		state_ = D3D12_RESOURCE_STATE_GENERIC_READ;
 	}
 	else if (type_ == TextureType::Depth)
@@ -122,7 +130,8 @@ bool TextureDX12::Initialize(const TextureParameter& parameter)
 										D3D12_RESOURCE_STATE_DEPTH_READ,
 										resourceFlag,
 										parameter.Size,
-										parameter.SampleCount);
+										parameter.SampleCount,
+										parameter.MipLevelCount);
 		state_ = D3D12_RESOURCE_STATE_DEPTH_READ;
 	}
 	else if (type_ == TextureType::Color)
@@ -135,7 +144,8 @@ bool TextureDX12::Initialize(const TextureParameter& parameter)
 										D3D12_RESOURCE_STATE_COPY_DEST,
 										resourceFlag,
 										parameter.Size,
-										parameter.SampleCount);
+										parameter.SampleCount,
+										parameter.MipLevelCount);
 
 		state_ = D3D12_RESOURCE_STATE_COPY_DEST;
 	}
@@ -162,6 +172,7 @@ bool TextureDX12::Initialize(ID3D12Resource* textureResource)
 	format_ = ConvertFormat(desc.Format);
 	texture_size_ = Vec3I(static_cast<int32_t>(desc.Width), static_cast<int32_t>(desc.Height), static_cast<int32_t>(desc.DepthOrArraySize));
 	cpu_memory_size_ = GetTextureMemorySize(format_, texture_size_);
+	mipmapCount_ = desc.MipLevels;
 
 	UINT64 size = 0;
 	device_->GetCopyableFootprints(&desc, 0, 1, 0, &footprint_, nullptr, nullptr, &size);
