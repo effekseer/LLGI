@@ -64,6 +64,8 @@ public:
 
 	wgpu::Device& GetDevice() { return device_; }
 	wgpu::Queue& GetQueue() { return queue_; }
+
+	bool IsResolvedDepthSupported() const override { return false; }
 };
 
 } // namespace LLGI

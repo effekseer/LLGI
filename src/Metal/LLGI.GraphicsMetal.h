@@ -76,7 +76,9 @@ public:
 	std::vector<uint8_t> CaptureRenderTarget(Texture* renderTarget) override;
 
 	Query* CreateQuery(QueryType queryType, int32_t queryCount) override;
-	
+
+	bool IsResolvedDepthSupported() const override { return true; }
+
 	uint64_t TimestampToMicroseconds(uint64_t timestamp) const override;
 	
 	RenderPassMetal* GetRenderPass() const { return renderPass_.get(); }

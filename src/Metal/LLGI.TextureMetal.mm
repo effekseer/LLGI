@@ -44,14 +44,9 @@ bool TextureMetal::Initialize(id<MTLDevice> device, const TextureParameter& para
 	}
 	else
 	{
-		textureDescriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:ConvertFormat(parameter.Format)
-																			   width:parameter.Size.X
-																			  height:parameter.Size.Y
-																		   mipmapped:isMipmapped];
-
 		textureDescriptor = [[[MTLTextureDescriptor alloc] init] autorelease];
-        textureDescriptor.usage = usage;
-        
+		textureDescriptor.usage = usage;
+
 		if (isRenderTarget)
 		{
 			textureDescriptor.usage = textureDescriptor.usage | MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
@@ -66,7 +61,7 @@ bool TextureMetal::Initialize(id<MTLDevice> device, const TextureParameter& para
 		{
 			if (isArray)
 			{
-				if (textureDescriptor.sampleCount > 1)
+				if (parameter.SampleCount > 1)
 				{
 #if !(TARGET_OS_IPHONE) && !(TARGET_OS_SIMULATOR)
 					textureDescriptor.textureType = MTLTextureType2DMultisampleArray;
@@ -81,7 +76,7 @@ bool TextureMetal::Initialize(id<MTLDevice> device, const TextureParameter& para
 			}
 			else
 			{
-				if (textureDescriptor.sampleCount > 1)
+				if (parameter.SampleCount > 1)
 				{
 					textureDescriptor.textureType = MTLTextureType2DMultisample;
 				}
@@ -104,7 +99,7 @@ bool TextureMetal::Initialize(id<MTLDevice> device, const TextureParameter& para
 		textureDescriptor.sampleCount = parameter.SampleCount;
 		textureDescriptor.mipmapLevelCount = isMipmapped ? GetMaximumMipLevels(Vec2I{parameter.Size.X, parameter.Size.Y}) : 1;
 
-		if (parameter.SampleCount > 1)
+		if (parameter.SampleCount > 1 && !isArray)
 		{
 			textureDescriptor.textureType = MTLTextureType2DMultisample;
 			textureDescriptor.storageMode = MTLStorageModePrivate;

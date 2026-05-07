@@ -32,11 +32,6 @@ public:
 
 	virtual bool GetData(std::vector<uint8_t>& data) { return false; }
 
-	/**
-		@brief	Generate mipmaps based on level zero.
-	*/
-	virtual void GenerateMipMaps() {}
-
 	virtual Vec2I GetSizeAs2D() const;
 	[[deprecated("use GetType.")]] virtual bool IsRenderTexture() const;
 	[[deprecated("use GetType.")]] virtual bool IsDepthTexture() const;

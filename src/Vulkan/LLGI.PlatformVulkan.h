@@ -36,6 +36,7 @@ private:
 		vk::Image image = nullptr;
 		vk::ImageView view = nullptr;
 		vk::Fence fence = nullptr;
+		vk::Semaphore renderComplete = nullptr;
 		TextureVulkan* texture = nullptr;
 	};
 
@@ -63,8 +64,6 @@ private:
 	//! to check to finish present
 	vk::Semaphore vkPresentComplete_;
 
-	//! to check to finish render
-	vk::Semaphore vkRenderComplete_;
 	std::vector<vk::CommandBuffer> vkCmdBuffers;
 
 	vk::SurfaceKHR surface_ = nullptr;

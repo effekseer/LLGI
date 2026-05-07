@@ -5,12 +5,14 @@
 #import <MetalKit/MetalKit.h>
 
 #include <memory>
+#include <vector>
 
 namespace LLGI
 {
 
 class GraphicsMetal;
 class IndexBuffer;
+class QueryMetal;
 
 struct CommandListMetalPlatformRenderPassContext
 {
@@ -33,7 +35,20 @@ class CommandListMetal : public CommandList
 	id<MTLRenderCommandEncoder> renderEncoder_ = nullptr;
 	id<MTLComputeCommandEncoder> computeEncoder_ = nullptr;
 	id<MTLFence> fence_ = nullptr;
+	id<MTLBuffer> visibilityResultBuffer_ = nullptr;
+	uint32_t visibilityResultBufferCount_ = 0;
+	uint32_t visibilityResultOffset_ = 0;
 	bool isCompleted_ = true;
+
+	struct PendingOcclusionQuery
+	{
+		QueryMetal* query = nullptr;
+		uint32_t queryIndex = 0;
+		uint32_t visibilityIndex = 0;
+	};
+	std::vector<PendingOcclusionQuery> pendingOcclusionQueries_;
+
+	bool EnsureVisibilityResultBuffer(uint32_t queryCount);
 
 public:
 	CommandListMetal(Graphics* graphics);

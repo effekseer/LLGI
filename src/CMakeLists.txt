@@ -21,6 +21,20 @@ endif()
 if(MSVC)
   file(GLOB files_dx12 DX12/*.h DX12/*.cpp)
   list(APPEND files ${files_dx12})
+
+  set(LLGI_DX12_MIPMAP_SHADER_HEADER
+      "${CMAKE_CURRENT_BINARY_DIR}/generated/LLGI.DX12MipmapShader.h")
+  add_subdirectory("../tools/DX12MipmapShaderCompiler"
+                   "${CMAKE_CURRENT_BINARY_DIR}/DX12MipmapShaderCompiler")
+  add_custom_command(
+    OUTPUT "${LLGI_DX12_MIPMAP_SHADER_HEADER}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+            "${CMAKE_CURRENT_BINARY_DIR}/generated"
+    COMMAND $<TARGET_FILE:LLGI_DX12MipmapShaderCompiler>
+            "${LLGI_DX12_MIPMAP_SHADER_HEADER}"
+    DEPENDS LLGI_DX12MipmapShaderCompiler
+    VERBATIM)
+  list(APPEND files "${LLGI_DX12_MIPMAP_SHADER_HEADER}")
 endif()
 
 if(BUILD_VULKAN)
@@ -71,6 +85,10 @@ foreach(FILE ${files})
 endforeach()
 
 add_library(LLGI STATIC ${files})
+
+if(MSVC)
+  target_include_directories(LLGI PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+endif()
 
 file(GLOB LOCAL_HEADERS *.h)
 set_target_properties(LLGI PROPERTIES PUBLIC_HEADER "${LOCAL_HEADERS}")

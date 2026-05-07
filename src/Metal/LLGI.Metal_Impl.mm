@@ -126,6 +126,18 @@ TextureFormatType ConvertFormat(MTLPixelFormat format)
 	{
 		return TextureFormatType::R8_UNORM;
 	}
+	else if (format == MTLPixelFormatR16Float)
+	{
+		return TextureFormatType::R16_FLOAT;
+	}
+	else if (format == MTLPixelFormatR32Float)
+	{
+		return TextureFormatType::R32_FLOAT;
+	}
+	else if (format == MTLPixelFormatRG16Float)
+	{
+		return TextureFormatType::R16G16_FLOAT;
+	}
 	else if (format == MTLPixelFormatRGBA16Float)
 	{
 		return TextureFormatType::R16G16B16A16_FLOAT;
@@ -136,7 +148,7 @@ TextureFormatType ConvertFormat(MTLPixelFormat format)
 	}
 	else if (format == MTLPixelFormatRG32Float)
 	{
-		return TextureFormatType::R16G16_FLOAT;
+		return TextureFormatType::R32G32_FLOAT;
 	}
 #if !(TARGET_OS_IPHONE) && !(TARGET_OS_SIMULATOR)
 	else if (format == MTLPixelFormatBC1_RGBA)

@@ -158,7 +158,7 @@ void test_compute_shader_texture(LLGI::DeviceType deviceType)
 	pip->SetShader(LLGI::ShaderStageType::Compute, shader_cs.get());
 	if (!pip->Compile())
 	{
-        std::cout << "Failed : Compile" << std::endl;
+		std::cout << "Failed : Compile" << std::endl;
 		abort();
 	}
 
@@ -196,10 +196,7 @@ void test_compute_shader_texture(LLGI::DeviceType deviceType)
 	LLGI::TextureParameter texParamWrite;
 	texParamWrite.Size = {1, 1, 1};
 	texParamWrite.Usage = LLGI::TextureUsageType::Storage;
-	if (deviceType == LLGI::DeviceType::WebGPU)
-	{
-		texParamWrite.Format = LLGI::TextureFormatType::R32G32B32A32_FLOAT;
-	}
+	texParamWrite.Format = LLGI::TextureFormatType::R32G32B32A32_FLOAT;
 	auto texWrite = LLGI::CreateSharedPtr(graphics->CreateTexture(texParamWrite));
 
 	if (!platform->NewFrame())
@@ -224,21 +221,10 @@ void test_compute_shader_texture(LLGI::DeviceType deviceType)
 	std::vector<uint8_t> result;
 	if (texWrite->GetData(result))
 	{
-		if (deviceType == LLGI::DeviceType::WebGPU)
+		const auto p = reinterpret_cast<const float*>(result.data());
+		if (!(p[0] == 0.5f && p[1] == 0.25f && p[2] == 0.25f && p[3] == 0.5f))
 		{
-			const auto p = reinterpret_cast<const float*>(result.data());
-			if (!(p[0] == 0.5f && p[1] == 0.25f && p[2] == 0.25f && p[3] == 0.5f))
-			{
-				std::cout << "Failed : Mismatch" << p[0] << "," << p[1] << "," << p[2] << "," << p[3] << std::endl;
-				abort();
-			}
-		}
-		else if (!(result[0] == 128 && result[1] == 64 && result[2] == 64 && result[3] == 128))
-		{
-            std::cout << "Failed : Mismatch" << static_cast<int>(result[0]) << ","
-            << static_cast<int>(result[1]) << ","
-            << static_cast<int>(result[2]) << ","
-            << static_cast<int>(result[3]) << std::endl;
+			std::cout << "Failed : Mismatch" << p[0] << "," << p[1] << "," << p[2] << "," << p[3] << std::endl;
 			abort();
 		}
 	}

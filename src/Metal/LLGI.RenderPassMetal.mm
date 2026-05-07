@@ -28,8 +28,14 @@ void RenderPassMetal::UpdateTarget(TextureMetal** textures,
 
 		if (resolvedTexture != nullptr)
 		{
+			renderPassDescriptor_.colorAttachments[i].texture = textures[i]->GetTexture();
 			renderPassDescriptor_.colorAttachments[i].resolveTexture = resolvedTexture->GetTexture();
 			renderPassDescriptor_.colorAttachments[i].storeAction = MTLStoreActionMultisampleResolve;
+		}
+		else
+		{
+			renderPassDescriptor_.colorAttachments[i].resolveTexture = nil;
+			renderPassDescriptor_.colorAttachments[i].storeAction = MTLStoreActionStore;
 		}
 	}
 
@@ -42,6 +48,11 @@ void RenderPassMetal::UpdateTarget(TextureMetal** textures,
 			renderPassDescriptor_.depthAttachment.resolveTexture = resolvedDepthTexture->GetTexture();
 			renderPassDescriptor_.depthAttachment.storeAction = MTLStoreActionMultisampleResolve;
 		}
+		else
+		{
+			renderPassDescriptor_.depthAttachment.resolveTexture = nil;
+			renderPassDescriptor_.depthAttachment.storeAction = MTLStoreActionStore;
+		}
 
 		if (HasStencil(ConvertFormat(depthTexture->GetTexture().pixelFormat)))
 		{
@@ -51,6 +62,11 @@ void RenderPassMetal::UpdateTarget(TextureMetal** textures,
 			{
 				renderPassDescriptor_.stencilAttachment.resolveTexture = resolvedDepthTexture->GetTexture();
 				renderPassDescriptor_.stencilAttachment.storeAction = MTLStoreActionMultisampleResolve;
+			}
+			else
+			{
+				renderPassDescriptor_.stencilAttachment.resolveTexture = nil;
+				renderPassDescriptor_.stencilAttachment.storeAction = MTLStoreActionStore;
 			}
 		}
 
@@ -92,7 +108,12 @@ bool RenderPassMetal::UpdateRenderTarget(
 		return false;
 	}
 
-	if (!getSize(screenSize_, (const Texture**)textures, textureCount, depthTexture))
+	if (!sanitize())
+	{
+		return false;
+	}
+
+	if (!getSize(screenSize_, (const Texture**)textures, textureCount, depthTexture, resolvedTexture, resolvedDepthTexture))
 	{
 		return false;
 	}

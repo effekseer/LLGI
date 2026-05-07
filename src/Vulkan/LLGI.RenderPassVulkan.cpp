@@ -40,6 +40,12 @@ bool RenderPassVulkan::Initialize(const TextureVulkan** textures,
 	if (textureCount == 0)
 		return false;
 
+	if (resolvedDepthTexture != nullptr)
+	{
+		Log(LogType::Error, "RenderPassVulkan : Resolved depth is not supported.");
+		return false;
+	}
+
 	if (!assignRenderTextures((Texture**)(textures), textureCount))
 	{
 		return false;

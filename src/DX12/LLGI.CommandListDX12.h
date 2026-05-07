@@ -7,6 +7,7 @@
 #include "LLGI.GraphicsDX12.h"
 #include "LLGI.PipelineStateDX12.h"
 #include "LLGI.RenderPassDX12.h"
+#include <unordered_map>
 
 namespace LLGI
 {
@@ -37,10 +38,14 @@ private:
 	std::shared_ptr<RenderPassDX12> renderPass_;
 
 	ID3D12GraphicsCommandList* currentCommandList_ = nullptr;
+	ID3D12RootSignature* mipmapRootSignature_ = nullptr;
+	std::unordered_map<DXGI_FORMAT, ID3D12PipelineState*> mipmapPipelineStates_;
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC GetSRVDescFromTexture(const TextureDX12* texture);
 	D3D12_SAMPLER_DESC GeSamplerDescFromBindingTexture(const BindingTexture& texture);
 	D3D12_SHADER_RESOURCE_VIEW_DESC GetSRVDescFromBindingBuffer(const BindingComputeBuffer& buffer);
+	bool CreateMipmapRootSignature();
+	ID3D12PipelineState* GetMipmapPipelineState(DXGI_FORMAT format);
 	
 	void BeginInternal();
 
@@ -60,6 +65,7 @@ public:
 	void CopyTexture(Texture* src, Texture* dst) override;
 	void CopyTexture(
 		Texture* src, Texture* dst, const Vec3I& srcPos, const Vec3I& dstPos, const Vec3I& size, int srcLayer, int dstLayer) override;
+	void GenerateMipMap(Texture* src) override;
 
 	void CopyBuffer(Buffer* src, Buffer* dst) override;
 

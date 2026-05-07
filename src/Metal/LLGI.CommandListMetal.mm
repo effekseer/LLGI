@@ -12,6 +12,35 @@
 
 namespace LLGI
 {
+namespace
+{
+static constexpr uint32_t InitialVisibilityResultBufferCount = 1024;
+}
+
+bool CommandListMetal::EnsureVisibilityResultBuffer(uint32_t queryCount)
+{
+	if (visibilityResultBuffer_ != nullptr && visibilityResultBufferCount_ >= queryCount)
+	{
+		return true;
+	}
+
+	if (visibilityResultBuffer_ != nullptr)
+	{
+		[visibilityResultBuffer_ release];
+		visibilityResultBuffer_ = nullptr;
+		visibilityResultBufferCount_ = 0;
+	}
+
+	visibilityResultBuffer_ = [graphics_->GetDevice() newBufferWithLength:sizeof(uint64_t) * queryCount
+																   options:MTLResourceStorageModeShared];
+	if (visibilityResultBuffer_ == nil)
+	{
+		return false;
+	}
+
+	visibilityResultBufferCount_ = queryCount;
+	return true;
+}
 
 CommandListMetal::CommandListMetal(Graphics* graphics)
 {
@@ -96,6 +125,12 @@ CommandListMetal::~CommandListMetal()
 	if (fence_ != nullptr)
 	{
 		[fence_ release];
+	}
+
+	if (visibilityResultBuffer_ != nullptr)
+	{
+		[visibilityResultBuffer_ release];
+		visibilityResultBuffer_ = nullptr;
 	}
 
 	SafeRelease(graphics_);
@@ -337,6 +372,14 @@ void CommandListMetal::BeginRenderPass(RenderPass* renderPass)
 		auto rp = static_cast<RenderPassMetal*>(renderPass);
 		auto rpd = rp->GetRenderPassDescriptor();
 
+		if (EnsureVisibilityResultBuffer(InitialVisibilityResultBufferCount))
+		{
+			memset([visibilityResultBuffer_ contents], 0, sizeof(uint64_t) * visibilityResultBufferCount_);
+			visibilityResultOffset_ = 0;
+			pendingOcclusionQueries_.clear();
+			rpd.visibilityResultBuffer = visibilityResultBuffer_;
+		}
+
 		for (size_t i = 0; i < rp->pixelFormats.size(); i++)
 		{
 			if (rp->isColorCleared)
@@ -360,9 +403,9 @@ void CommandListMetal::BeginRenderPass(RenderPass* renderPass)
 			rpd.depthAttachment.loadAction = MTLLoadActionClear;
 			rpd.depthAttachment.clearDepth = 1.0;
 
-			if (rp->depthStencilFormat != MTLPixelFormatDepth32Float_Stencil8
+			if (rp->depthStencilFormat == MTLPixelFormatDepth32Float_Stencil8
 #if !(TARGET_OS_IPHONE) && !(TARGET_OS_SIMULATOR)
-				&& rp->depthStencilFormat != MTLPixelFormatDepth24Unorm_Stencil8
+				|| rp->depthStencilFormat == MTLPixelFormatDepth24Unorm_Stencil8
 #endif
 			)
 			{
@@ -392,6 +435,26 @@ void CommandListMetal::EndRenderPass()
 		[renderEncoder_ endEncoding];
 		[renderEncoder_ release];
 		renderEncoder_ = nullptr;
+	}
+
+	if (!pendingOcclusionQueries_.empty())
+	{
+		auto blitEncoder = [commandBuffer_ blitCommandEncoder];
+		for (auto& pending : pendingOcclusionQueries_)
+		{
+			if (pending.query == nullptr || pending.query->GetOcclusionBuffer() == nil)
+			{
+				continue;
+			}
+
+			[blitEncoder copyFromBuffer:visibilityResultBuffer_
+						   sourceOffset:sizeof(uint64_t) * pending.visibilityIndex
+							   toBuffer:pending.query->GetOcclusionBuffer()
+					  destinationOffset:sizeof(uint64_t) * pending.queryIndex
+								   size:sizeof(uint64_t)];
+		}
+		[blitEncoder endEncoding];
+		pendingOcclusionQueries_.clear();
 	}
 
 	CommandList::EndRenderPass();
@@ -570,16 +633,76 @@ void CommandListMetal::CopyBuffer(Buffer* src, Buffer* dst)
 
 bool CommandListMetal::ResetQuery(Query* query)
 {
+	auto query_ = static_cast<QueryMetal*>(query);
+	if (query_ == nullptr)
+	{
+		return false;
+	}
+
+	if (query_->GetQueryType() == QueryType::Occulusion)
+	{
+		auto buffer = query_->GetOcclusionBuffer();
+		if (buffer == nil)
+		{
+			return false;
+		}
+
+		memset([buffer contents], 0, sizeof(uint64_t) * query_->GetQueryCount());
+	}
+
 	return true;
 }
 
 bool CommandListMetal::BeginQuery(Query* query, uint32_t queryIndex)
 {
+	auto query_ = static_cast<QueryMetal*>(query);
+	if (query_ == nullptr || queryIndex >= query_->GetQueryCount())
+	{
+		return false;
+	}
+
+	if (query_->GetQueryType() == QueryType::Occulusion)
+	{
+		if (renderEncoder_ == nullptr || query_->GetOcclusionBuffer() == nil || visibilityResultBuffer_ == nil ||
+			visibilityResultOffset_ >= visibilityResultBufferCount_)
+		{
+			return false;
+		}
+
+		const auto visibilityIndex = visibilityResultOffset_++;
+		[renderEncoder_ setVisibilityResultMode:MTLVisibilityResultModeCounting offset:sizeof(uint64_t) * visibilityIndex];
+
+		PendingOcclusionQuery pending;
+		pending.query = query_;
+		pending.queryIndex = queryIndex;
+		pending.visibilityIndex = visibilityIndex;
+		pendingOcclusionQueries_.push_back(pending);
+		RegisterReferencedObject(query);
+		return true;
+	}
+
 	return false;
 }
 
 bool CommandListMetal::EndQuery(Query* query, uint32_t queryIndex)
 {
+	auto query_ = static_cast<QueryMetal*>(query);
+	if (query_ == nullptr || queryIndex >= query_->GetQueryCount())
+	{
+		return false;
+	}
+
+	if (query_->GetQueryType() == QueryType::Occulusion)
+	{
+		if (renderEncoder_ == nullptr)
+		{
+			return false;
+		}
+
+		[renderEncoder_ setVisibilityResultMode:MTLVisibilityResultModeDisabled offset:0];
+		return true;
+	}
+
 	return false;
 }
 
@@ -593,6 +716,11 @@ bool CommandListMetal::RecordTimestamp(Query* query, uint32_t queryIndex)
 
 	if (query_->GetQueryType() == QueryType::Timestamp)
 	{
+		if (queryIndex >= query_->GetQueryCount())
+		{
+			return false;
+		}
+
 		id<MTLCounterSampleBuffer> buffer = query_->GetTimestampBuffer();
 		if (buffer == nil)
 		{

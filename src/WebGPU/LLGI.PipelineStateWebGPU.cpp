@@ -32,7 +32,7 @@ bool BuildBindGroupLayoutEntry(const ShaderBindingWebGPU& binding, wgpu::ShaderS
 		entry.buffer.minBindingSize = 0;
 		return true;
 	case ShaderBindingResourceTypeWebGPU::Texture:
-		entry.texture.sampleType = wgpu::TextureSampleType::Float;
+		entry.texture.sampleType = binding.TextureSampleType;
 		entry.texture.viewDimension = binding.TextureViewDimension;
 		entry.texture.multisampled = false;
 		return true;
@@ -63,6 +63,12 @@ bool ContainsBinding(const std::vector<ShaderBindingWebGPU>& bindings, const Sha
 		if ((binding.ResourceType == ShaderBindingResourceTypeWebGPU::Texture ||
 			 binding.ResourceType == ShaderBindingResourceTypeWebGPU::StorageTexture) &&
 			existingBinding.TextureViewDimension != binding.TextureViewDimension)
+		{
+			continue;
+		}
+
+		if (binding.ResourceType == ShaderBindingResourceTypeWebGPU::Texture &&
+			existingBinding.TextureSampleType != binding.TextureSampleType)
 		{
 			continue;
 		}
@@ -283,8 +289,11 @@ bool PipelineStateWebGPU::Compile()
 
 	desc.fragment = &fragmentState;
 
+	const bool hasDepth = renderPassPipelineState_->Key.DepthFormat != TextureFormatType::Unknown;
+	const bool hasStencil = HasStencil(renderPassPipelineState_->Key.DepthFormat);
+
 	wgpu::DepthStencilState depthStencilState = {};
-	depthStencilState.depthWriteEnabled = IsDepthWriteEnabled;
+	depthStencilState.depthWriteEnabled = hasDepth && IsDepthWriteEnabled;
 
 	if (IsDepthTestEnabled)
 	{
@@ -295,7 +304,7 @@ bool PipelineStateWebGPU::Compile()
 		depthStencilState.depthCompare = wgpu::CompareFunction::Always;
 	}
 
-	if (IsStencilTestEnabled)
+	if (hasStencil && IsStencilTestEnabled)
 	{
 		wgpu::StencilFaceState fs;
 
@@ -326,7 +335,7 @@ bool PipelineStateWebGPU::Compile()
 		depthStencilState.stencilReadMask = 0xff;
 	}
 
-	if (renderPassPipelineState_->Key.DepthFormat != TextureFormatType::Unknown)
+	if (hasDepth)
 	{
 		depthStencilState.format = ConvertFormat(renderPassPipelineState_->Key.DepthFormat);
 		desc.depthStencil = &depthStencilState;
