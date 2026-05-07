@@ -290,10 +290,12 @@ bool PipelineStateVulkan::CreateGraphicsPipeline()
 	// setup a depthstencil
 	vk::PipelineDepthStencilStateCreateInfo depthStencilInfo;
 
-	// DepthTest flag must be enabled because DepthWrite and Stencil are depended on DepthTestFlag
-	depthStencilInfo.depthTestEnable = true;
+	const bool hasDepth = renderPassPipelineState->Key.DepthFormat != TextureFormatType::Unknown;
+	const bool hasStencil = HasStencil(renderPassPipelineState->Key.DepthFormat);
 
-	depthStencilInfo.depthWriteEnable = IsDepthWriteEnabled;
+	depthStencilInfo.depthTestEnable = hasDepth && (IsDepthTestEnabled || IsDepthWriteEnabled);
+
+	depthStencilInfo.depthWriteEnable = hasDepth && IsDepthWriteEnabled;
 
 	std::array<vk::CompareOp, 10> compareOps;
 	compareOps[static_cast<int>(DepthFuncType::Never)] = vk::CompareOp::eNever;
@@ -313,7 +315,7 @@ bool PipelineStateVulkan::CreateGraphicsPipeline()
 	}
 
 	vk::StencilOpState stencil;
-	depthStencilInfo.stencilTestEnable = true;
+	depthStencilInfo.stencilTestEnable = hasStencil && IsStencilTestEnabled;
 
 	/*
 	enum class StencilOperatorType
@@ -339,7 +341,7 @@ bool PipelineStateVulkan::CreateGraphicsPipeline()
 	stencilOps[static_cast<int>(StencilOperatorType::IncRepeat)] = vk::StencilOp::eIncrementAndWrap;
 	stencilOps[static_cast<int>(StencilOperatorType::DecRepeat)] = vk::StencilOp::eDecrementAndWrap;
 
-	if (IsStencilTestEnabled)
+	if (depthStencilInfo.stencilTestEnable)
 	{
 		stencil.depthFailOp = stencilOps[static_cast<int>(StencilDepthFailOp)];
 		stencil.failOp = stencilOps[static_cast<int>(StencilFailOp)];

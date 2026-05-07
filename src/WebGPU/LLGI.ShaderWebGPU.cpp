@@ -144,6 +144,11 @@ bool IsSameBinding(const ShaderBindingWebGPU& lhs, const ShaderBindingWebGPU& rh
 		return false;
 	}
 
+	if (lhs.ResourceType == ShaderBindingResourceTypeWebGPU::Texture)
+	{
+		return lhs.TextureSampleType == rhs.TextureSampleType;
+	}
+
 	if (lhs.ResourceType == ShaderBindingResourceTypeWebGPU::StorageTexture)
 	{
 		return lhs.StorageTextureFormat == rhs.StorageTextureFormat &&
@@ -203,6 +208,8 @@ std::vector<ShaderBindingWebGPU> ReflectBindings(const std::string& code)
 			{
 				reflected.ResourceType = ShaderBindingResourceTypeWebGPU::Texture;
 				reflected.TextureViewDimension = ParseTextureViewDimension(statement);
+				reflected.TextureSampleType =
+					statement.find(": texture_depth_") != std::string::npos ? wgpu::TextureSampleType::Depth : wgpu::TextureSampleType::Float;
 			}
 			else if (statement.find(": sampler") != std::string::npos)
 			{

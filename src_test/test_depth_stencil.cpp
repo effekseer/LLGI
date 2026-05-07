@@ -16,7 +16,8 @@ void test_depth_stencil(LLGI::DeviceType deviceType, DepthStencilTestMode mode)
 {
 	if (mode == DepthStencilTestMode::DepthAsTexture)
 	{
-		if (deviceType != LLGI::DeviceType::DirectX12 && deviceType != LLGI::DeviceType::Default)
+		if (deviceType != LLGI::DeviceType::DirectX12 && deviceType != LLGI::DeviceType::Vulkan && deviceType != LLGI::DeviceType::WebGPU &&
+			deviceType != LLGI::DeviceType::Default)
 			return;
 	}
 
@@ -42,8 +43,14 @@ void test_depth_stencil(LLGI::DeviceType deviceType, DepthStencilTestMode mode)
 	std::shared_ptr<LLGI::Shader> shader_screen_vs = nullptr;
 	std::shared_ptr<LLGI::Shader> shader_screen_ps = nullptr;
 
-	TestHelper::CreateShader(
-		graphics.get(), deviceType, "simple_texture_rectangle.vert", "simple_texture_rectangle.frag", shader_screen_vs, shader_screen_ps);
+	TestHelper::CreateShader(graphics.get(),
+							 deviceType,
+							 "simple_texture_rectangle.vert",
+							 mode == DepthStencilTestMode::DepthAsTexture && deviceType == LLGI::DeviceType::WebGPU
+								 ? "simple_depth_texture_rectangle.frag"
+								 : "simple_texture_rectangle.frag",
+							 shader_screen_vs,
+							 shader_screen_ps);
 
 	// Green: near
 	std::shared_ptr<LLGI::Buffer> vb1;

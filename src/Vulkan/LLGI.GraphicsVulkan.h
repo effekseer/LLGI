@@ -82,6 +82,8 @@ public:
 
 	Query* CreateQuery(QueryType queryType, int32_t queryCount) override;
 	uint64_t TimestampToMicroseconds(uint64_t timestamp) const override;
+
+	bool IsResolvedDepthSupported() const override { return false; }
 };
 
 } // namespace LLGI

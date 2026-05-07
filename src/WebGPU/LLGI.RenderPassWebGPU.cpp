@@ -43,6 +43,12 @@ void RenderPassWebGPU::RefreshDescriptor()
 bool RenderPassWebGPU::Initialize(
 	Texture** textures, int textureCount, Texture* depthTexture, Texture* resolvedRenderTexture, Texture* resolvedDepthTexture)
 {
+	if (resolvedDepthTexture != nullptr)
+	{
+		Log(LogType::Error, "RenderPassWebGPU : Resolved depth is not supported.");
+		return false;
+	}
+
 	if (!assignRenderTextures(textures, textureCount))
 	{
 		return false;

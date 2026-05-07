@@ -76,7 +76,8 @@ bool TextureVulkan::Initialize(GraphicsVulkan* graphics,
 
 	if (IsDepthFormat(parameter.Format))
 	{
-		resourceUsage = resourceUsage | vk::ImageUsageFlagBits::eDepthStencilAttachment;
+		resourceUsage =
+			resourceUsage | vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled;
 
 		aspect = vk::ImageAspectFlagBits::eDepth;
 

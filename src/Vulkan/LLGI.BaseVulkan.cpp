@@ -205,6 +205,15 @@ static vk::PipelineStageFlags GetStageFlag(vk::ImageLayout layout)
 	{
 		return vk::PipelineStageFlagBits::eColorAttachmentOutput;
 	}
+	else if (layout == vk::ImageLayout::eDepthStencilAttachmentOptimal)
+	{
+		return vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eLateFragmentTests;
+	}
+	else if (layout == vk::ImageLayout::eDepthStencilReadOnlyOptimal)
+	{
+		return vk::PipelineStageFlagBits::eFragmentShader | vk::PipelineStageFlagBits::eEarlyFragmentTests |
+			   vk::PipelineStageFlagBits::eLateFragmentTests;
+	}
 	else if (layout == vk::ImageLayout::eShaderReadOnlyOptimal)
 	{
 		return vk::PipelineStageFlagBits::eVertexShader | vk::PipelineStageFlagBits::eFragmentShader;
@@ -242,6 +251,10 @@ void SetImageLayout(vk::CommandBuffer cmdbuffer,
 	{
 		imageMemoryBarrier.srcAccessMask = vk::AccessFlagBits::eDepthStencilAttachmentWrite;
 	}
+	else if (oldImageLayout == vk::ImageLayout::eDepthStencilReadOnlyOptimal)
+	{
+		imageMemoryBarrier.srcAccessMask = vk::AccessFlagBits::eDepthStencilAttachmentRead | vk::AccessFlagBits::eShaderRead;
+	}
 	else if (oldImageLayout == vk::ImageLayout::eTransferSrcOptimal)
 	{
 		imageMemoryBarrier.srcAccessMask = vk::AccessFlagBits::eTransferRead;
@@ -271,7 +284,12 @@ void SetImageLayout(vk::CommandBuffer cmdbuffer,
 	}
 	else if (newImageLayout == vk::ImageLayout::eDepthStencilAttachmentOptimal)
 	{
-		imageMemoryBarrier.dstAccessMask = vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+		imageMemoryBarrier.dstAccessMask =
+			vk::AccessFlagBits::eDepthStencilAttachmentRead | vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+	}
+	else if (newImageLayout == vk::ImageLayout::eDepthStencilReadOnlyOptimal)
+	{
+		imageMemoryBarrier.dstAccessMask = vk::AccessFlagBits::eDepthStencilAttachmentRead | vk::AccessFlagBits::eShaderRead;
 	}
 	else if (newImageLayout == vk::ImageLayout::eShaderReadOnlyOptimal)
 	{
@@ -293,6 +311,10 @@ void SetImageLayout(vk::CommandBuffer cmdbuffer,
 		imageMemoryBarrier.dstAccessMask == vk::AccessFlagBits::eShaderRead ||
 		imageMemoryBarrier.srcAccessMask == vk::AccessFlagBits::eColorAttachmentWrite ||
 		imageMemoryBarrier.srcAccessMask == vk::AccessFlagBits::eTransferRead ||
+		imageMemoryBarrier.srcAccessMask == vk::AccessFlagBits::eDepthStencilAttachmentWrite ||
+		imageMemoryBarrier.dstAccessMask == (vk::AccessFlagBits::eDepthStencilAttachmentRead | vk::AccessFlagBits::eShaderRead) ||
+		imageMemoryBarrier.dstAccessMask ==
+			(vk::AccessFlagBits::eDepthStencilAttachmentRead | vk::AccessFlagBits::eDepthStencilAttachmentWrite) ||
 		imageMemoryBarrier.dstAccessMask == (vk::AccessFlagBits::eMemoryRead | vk::AccessFlagBits::eMemoryWrite))
 	{
 		cmdbuffer.pipelineBarrier(
