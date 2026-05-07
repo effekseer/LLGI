@@ -13,7 +13,8 @@ namespace LLGI
 class QueryMetal : public Query
 {
 private:
-	id<MTLCounterSampleBuffer> timestampBuffer_;
+	id<MTLCounterSampleBuffer> timestampBuffer_ = nullptr;
+	id<MTLBuffer> occlusionBuffer_ = nullptr;
 	uint32_t queryCount_ = 0;
 
 public:
@@ -27,6 +28,7 @@ public:
 	uint64_t GetQueryResult(uint32_t queryIndex) override;
 
 	id<MTLCounterSampleBuffer> GetTimestampBuffer() { return timestampBuffer_; }
+	id<MTLBuffer> GetOcclusionBuffer() { return occlusionBuffer_; }
 };
 
 } // namespace LLGI

@@ -126,7 +126,7 @@ bool RenderPass::assignDepthTexture(Texture* depthTexture)
 
 bool RenderPass::assignResolvedRenderTexture(Texture* texture)
 {
-	if (resolvedRenderTexture_ != nullptr && resolvedRenderTexture_->GetType() != TextureType::Render)
+	if (texture != nullptr && texture->GetType() != TextureType::Render)
 	{
 		Log(LogType::Error, "RenderPass : Invalid ResolvedTexture.");
 		return false;
@@ -141,7 +141,7 @@ bool RenderPass::assignResolvedRenderTexture(Texture* texture)
 
 bool RenderPass::assignResolvedDepthTexture(Texture* texture)
 {
-	if (resolvedDepthTexture_ != nullptr && resolvedDepthTexture_->GetType() != TextureType::Depth)
+	if (texture != nullptr && texture->GetType() != TextureType::Depth)
 	{
 		Log(LogType::Error, "RenderPass : Invalid ResolvedTexture.");
 		return false;
@@ -258,6 +258,12 @@ bool RenderPass::sanitize()
 			Log(LogType::Error, "RenderPass : Formats are not same between Render and Resolved.");
 			return false;
 		}
+
+		if (renderTextures_.at(0)->GetSamplingCount() <= 1 || resolvedRenderTexture_->GetSamplingCount() != 1)
+		{
+			Log(LogType::Error, "RenderPass : Invalid SamplingCount between Render and Resolved.");
+			return false;
+		}
 	}
 
 	if (resolvedDepthTexture_ != nullptr)
@@ -271,6 +277,12 @@ bool RenderPass::sanitize()
 		if (depthTexture_->GetFormat() != resolvedDepthTexture_->GetFormat())
 		{
 			Log(LogType::Error, "RenderPass : Formats are not same between Render and Resolved.");
+			return false;
+		}
+
+		if (depthTexture_->GetSamplingCount() <= 1 || resolvedDepthTexture_->GetSamplingCount() != 1)
+		{
+			Log(LogType::Error, "RenderPass : Invalid SamplingCount between Render and Resolved.");
 			return false;
 		}
 	}

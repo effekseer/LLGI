@@ -19,10 +19,22 @@ QueryMetal::QueryMetal()
 
 QueryMetal::~QueryMetal()
 {
+	if (timestampBuffer_ != nullptr)
+	{
+		[timestampBuffer_ release];
+		timestampBuffer_ = nullptr;
+	}
+
+	if (occlusionBuffer_ != nullptr)
+	{
+		[occlusionBuffer_ release];
+		occlusionBuffer_ = nullptr;
+	}
 }
 
 bool QueryMetal::Initialize(Graphics* graphics, QueryType queryType, uint32_t queryCount)
 {
+	queryType_ = queryType;
 	queryCount_ = queryCount;
 
 	auto device = static_cast<GraphicsMetal*>(graphics)->GetDevice();
@@ -43,14 +55,42 @@ bool QueryMetal::Initialize(Graphics* graphics, QueryType queryType, uint32_t qu
 		if (descriptor.counterSet != nil)
 		{
 			timestampBuffer_ = [device newCounterSampleBufferWithDescriptor:descriptor error:nil];
+			[descriptor release];
 			return (timestampBuffer_ != nil);
 		}
+		[descriptor release];
+	}
+	else if (queryType == QueryType::Occulusion)
+	{
+		occlusionBuffer_ = [device newBufferWithLength:sizeof(uint64_t) * queryCount options:MTLResourceStorageModeShared];
+		return (occlusionBuffer_ != nil);
 	}
 	return false;
 }
 
 uint64_t QueryMetal::GetQueryResult(uint32_t queryIndex)
 {
+	if (queryIndex >= queryCount_)
+	{
+		return 0;
+	}
+
+	if (queryType_ == QueryType::Occulusion)
+	{
+		if (occlusionBuffer_ == nil)
+		{
+			return 0;
+		}
+
+		auto data = static_cast<const uint64_t*>([occlusionBuffer_ contents]);
+		return data[queryIndex];
+	}
+
+	if (timestampBuffer_ == nil)
+	{
+		return 0;
+	}
+
 	uint64_t result = 0;
 	NSRange range = { queryIndex, 1 };
 	NSData * counterData = [timestampBuffer_ resolveCounterRange:range];
