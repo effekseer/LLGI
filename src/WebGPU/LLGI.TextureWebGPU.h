@@ -4,6 +4,7 @@
 #include "../LLGI.Texture.h"
 #include "LLGI.BaseWebGPU.h"
 #include <unordered_map>
+#include <vector>
 
 namespace LLGI
 {
@@ -20,6 +21,8 @@ class TextureWebGPU : public Texture
 	wgpu::Sampler mipmapSampler_;
 	wgpu::ShaderModule mipmapShaderModule_;
 	std::unordered_map<wgpu::TextureFormat, wgpu::RenderPipeline> mipmapPipelines_;
+	std::vector<wgpu::Texture> mipmapRenderTextures_;
+	bool mipmapsGeneratedFromLockedData_ = false;
 	TextureParameter parameter_;
 	std::vector<uint8_t> temp_buffer_;
 

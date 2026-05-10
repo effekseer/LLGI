@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstring>
 #include <thread>
+#include <vector>
 
 #if defined(__EMSCRIPTEN__)
 #include <emscripten.h>
@@ -14,6 +15,8 @@ namespace LLGI
 
 namespace
 {
+constexpr uint32_t TextureBytesPerRowAlignment = 256;
+
 uint32_t AlignTo(uint32_t value, uint32_t alignment)
 {
 	return (value + alignment - 1) / alignment * alignment;
@@ -47,7 +50,7 @@ fn VSMain(@builtin(vertex_index) vertexId : u32) -> VSOutput {
 
 @fragment
 fn PSMain(input : VSOutput) -> @location(0) vec4f {
-	return textureSample(srcTexture, srcSampler, input.uv);
+	return textureSampleLevel(srcTexture, srcSampler, input.uv, 0.0);
 }
 )";
 
@@ -71,7 +74,105 @@ MipmapSize GetMipmapSize(const TextureParameter& parameter, uint32_t mipLevel)
 	return size;
 }
 
-wgpu::TextureViewDescriptor CreateMipmapViewDesc(wgpu::TextureFormat format, uint32_t mipLevel)
+uint32_t GetTextureRowsPerImage(TextureFormatType format, Vec3I size)
+{
+	if (size.Y <= 0)
+	{
+		return 0;
+	}
+
+	if (IsBlockCompressedFormat(format))
+	{
+		return static_cast<uint32_t>((size.Y + 3) / 4);
+	}
+
+	return static_cast<uint32_t>(size.Y);
+}
+
+struct TextureUploadData
+{
+	const uint8_t* Source = nullptr;
+	size_t SourceSize = 0;
+	std::vector<uint8_t> AlignedData;
+
+	const uint8_t* Data() const
+	{
+		return AlignedData.empty() ? Source : AlignedData.data();
+	}
+
+	size_t Size() const
+	{
+		return AlignedData.empty() ? SourceSize : AlignedData.size();
+	}
+};
+
+TextureUploadData CreateTextureUploadData(const uint8_t* src, uint32_t rowPitch, uint32_t rowCount, uint32_t alignedRowPitch)
+{
+	TextureUploadData uploadData;
+	uploadData.Source = src;
+	uploadData.SourceSize = static_cast<size_t>(rowPitch) * rowCount;
+
+	if (rowPitch == alignedRowPitch)
+	{
+		return uploadData;
+	}
+
+	uploadData.AlignedData.resize(static_cast<size_t>(alignedRowPitch) * rowCount);
+	for (uint32_t row = 0; row < rowCount; row++)
+	{
+		memcpy(
+			uploadData.AlignedData.data() + static_cast<size_t>(alignedRowPitch) * row,
+			src + static_cast<size_t>(rowPitch) * row,
+			rowPitch);
+	}
+	return uploadData;
+}
+
+void WriteTextureMipLevel(
+	wgpu::Device& device,
+	wgpu::Texture texture,
+	TextureFormatType format,
+	uint32_t mipLevel,
+	Vec3I size,
+	const uint8_t* data)
+{
+	const auto rowPitch = static_cast<uint32_t>(GetTextureRowPitch(format, size));
+	const auto rowCount = static_cast<uint32_t>(GetTextureRowCount(format, size));
+	const auto rowsPerImage = GetTextureRowsPerImage(format, size);
+	const auto alignedRowPitch = AlignTo(rowPitch, TextureBytesPerRowAlignment);
+	const auto uploadData = CreateTextureUploadData(data, rowPitch, rowCount, alignedRowPitch);
+
+	wgpu::TexelCopyTextureInfo dst{};
+	dst.texture = texture;
+	dst.mipLevel = mipLevel;
+	dst.aspect = wgpu::TextureAspect::All;
+
+	wgpu::TexelCopyBufferLayout layout{};
+	layout.bytesPerRow = alignedRowPitch;
+	layout.rowsPerImage = rowsPerImage;
+
+	wgpu::Extent3D extent{};
+	extent.width = size.X;
+	extent.height = size.Y;
+	extent.depthOrArrayLayers = size.Z;
+	device.GetQueue().WriteTexture(&dst, uploadData.Data(), uploadData.Size(), &layout, &extent);
+}
+
+wgpu::Texture CreateMipmapRenderTexture(wgpu::Device& device, wgpu::TextureFormat format, const MipmapSize& size)
+{
+	wgpu::TextureDescriptor desc{};
+	desc.dimension = wgpu::TextureDimension::e2D;
+	desc.format = format;
+	desc.mipLevelCount = 1;
+	desc.sampleCount = 1;
+	desc.size.width = size.Width;
+	desc.size.height = size.Height;
+	desc.size.depthOrArrayLayers = 1;
+	desc.usage = wgpu::TextureUsage::RenderAttachment | wgpu::TextureUsage::CopySrc;
+	return device.CreateTexture(&desc);
+}
+
+wgpu::TextureViewDescriptor CreateMipmapTextureViewDesc(wgpu::TextureFormat format, uint32_t mipLevel, wgpu::TextureUsage usage)
 {
 	wgpu::TextureViewDescriptor desc{};
 	desc.format = format;
@@ -81,7 +182,26 @@ wgpu::TextureViewDescriptor CreateMipmapViewDesc(wgpu::TextureFormat format, uin
 	desc.baseArrayLayer = 0;
 	desc.arrayLayerCount = 1;
 	desc.aspect = wgpu::TextureAspect::All;
+	desc.usage = usage;
 	return desc;
+}
+
+wgpu::TexelCopyTextureInfo CreateTextureCopyInfo(wgpu::Texture texture, uint32_t mipLevel)
+{
+	wgpu::TexelCopyTextureInfo info{};
+	info.texture = texture;
+	info.mipLevel = mipLevel;
+	info.aspect = wgpu::TextureAspect::All;
+	return info;
+}
+
+wgpu::Extent3D CreateTextureCopySize(const MipmapSize& size)
+{
+	wgpu::Extent3D copySize{};
+	copySize.width = size.Width;
+	copySize.height = size.Height;
+	copySize.depthOrArrayLayers = 1;
+	return copySize;
 }
 
 wgpu::RenderPassColorAttachment CreateMipmapColorAttachment(wgpu::TextureView view)
@@ -344,23 +464,27 @@ void* TextureWebGPU::Lock()
 
 void TextureWebGPU::Unlock()
 {
-	wgpu::TexelCopyTextureInfo imageCopyTexture{};
-	imageCopyTexture.texture = texture_;
-	imageCopyTexture.mipLevel = 0;
-	imageCopyTexture.aspect = wgpu::TextureAspect::All;
+	WriteTextureMipLevel(device_, texture_, format_, 0, parameter_.Size, temp_buffer_.data());
+	mipmapsGeneratedFromLockedData_ = false;
 
-	wgpu::TexelCopyBufferLayout textureDataLayout;
-	textureDataLayout.bytesPerRow = GetTextureRowPitch(format_, parameter_.Size);
-	wgpu::Extent3D extent;
-	extent.width = parameter_.Size.X;
-	extent.height = parameter_.Size.Y;
-	extent.depthOrArrayLayers = parameter_.Size.Z;
-	device_.GetQueue().WriteTexture(&imageCopyTexture, temp_buffer_.data(), temp_buffer_.size(), &textureDataLayout, &extent);
+	if (CanGenerateMipMaps(parameter_))
+	{
+		wgpu::CommandEncoderDescriptor encoderDesc{};
+		auto encoder = device_.CreateCommandEncoder(&encoderDesc);
+		GenerateMipMaps(encoder);
+		auto commandBuffer = encoder.Finish();
+		device_.GetQueue().Submit(1, &commandBuffer);
+	}
 }
 
 void TextureWebGPU::GenerateMipMaps(wgpu::CommandEncoder& commandEncoder)
 {
 	if (!CanGenerateMipMaps(parameter_))
+	{
+		return;
+	}
+
+	if (!temp_buffer_.empty() && mipmapsGeneratedFromLockedData_)
 	{
 		return;
 	}
@@ -372,13 +496,23 @@ void TextureWebGPU::GenerateMipMaps(wgpu::CommandEncoder& commandEncoder)
 		return;
 	}
 
+	mipmapRenderTextures_.clear();
+
 	for (uint32_t mipLevel = 1; mipLevel < static_cast<uint32_t>(parameter_.MipLevelCount); mipLevel++)
 	{
-		const auto srcViewDesc = CreateMipmapViewDesc(format, mipLevel - 1);
+		const auto srcViewDesc = CreateMipmapTextureViewDesc(format, mipLevel - 1, wgpu::TextureUsage::TextureBinding);
 		auto srcView = texture_.CreateView(&srcViewDesc);
 
-		const auto dstViewDesc = CreateMipmapViewDesc(format, mipLevel);
-		auto dstView = texture_.CreateView(&dstViewDesc);
+		const auto dstSize = GetMipmapSize(parameter_, mipLevel);
+		auto mipmapRenderTexture = CreateMipmapRenderTexture(device_, format, dstSize);
+		if (mipmapRenderTexture == nullptr)
+		{
+			return;
+		}
+		mipmapRenderTextures_.push_back(mipmapRenderTexture);
+
+		const auto dstViewDesc = CreateMipmapTextureViewDesc(format, 0, wgpu::TextureUsage::RenderAttachment);
+		auto dstView = mipmapRenderTexture.CreateView(&dstViewDesc);
 
 		wgpu::BindGroupEntry bindGroupEntries[2]{};
 		bindGroupEntries[0].binding = 0;
@@ -399,22 +533,34 @@ void TextureWebGPU::GenerateMipMaps(wgpu::CommandEncoder& commandEncoder)
 		renderPassDesc.colorAttachments = &colorAttachment;
 
 		auto passEncoder = commandEncoder.BeginRenderPass(&renderPassDesc);
-		const auto dstSize = GetMipmapSize(parameter_, mipLevel);
 		passEncoder.SetViewport(0.0f, 0.0f, static_cast<float>(dstSize.Width), static_cast<float>(dstSize.Height), 0.0f, 1.0f);
+		passEncoder.SetScissorRect(0, 0, dstSize.Width, dstSize.Height);
 		passEncoder.SetPipeline(pipeline);
 		passEncoder.SetBindGroup(0, bindGroup);
 		passEncoder.Draw(3);
 		passEncoder.End();
+
+		const auto copySrc = CreateTextureCopyInfo(mipmapRenderTexture, 0);
+		const auto copyDst = CreateTextureCopyInfo(texture_, mipLevel);
+		const auto copySize = CreateTextureCopySize(dstSize);
+		commandEncoder.CopyTextureToTexture(&copySrc, &copyDst, &copySize);
+	}
+
+	if (!temp_buffer_.empty())
+	{
+		mipmapsGeneratedFromLockedData_ = true;
 	}
 }
 
 bool TextureWebGPU::GetData(std::vector<uint8_t>& data)
 {
 	const auto bytesPerRowUnaligned = static_cast<uint32_t>(GetTextureRowPitch(format_, parameter_.Size));
-	const auto bytesPerRow = AlignTo(bytesPerRowUnaligned, 256);
+	const auto bytesPerRow = AlignTo(bytesPerRowUnaligned, TextureBytesPerRowAlignment);
+	const auto rowCount = static_cast<uint32_t>(GetTextureRowCount(format_, parameter_.Size));
+	const auto rowsPerImage = GetTextureRowsPerImage(format_, parameter_.Size);
 	const auto height = static_cast<uint32_t>(parameter_.Size.Y);
 	const auto depth = static_cast<uint32_t>(parameter_.Size.Z);
-	const auto bufferSize = static_cast<uint64_t>(bytesPerRow) * height * depth;
+	const auto bufferSize = static_cast<uint64_t>(bytesPerRow) * rowCount;
 
 	wgpu::BufferDescriptor bufferDesc{};
 	bufferDesc.size = bufferSize;
@@ -431,7 +577,7 @@ bool TextureWebGPU::GetData(std::vector<uint8_t>& data)
 	wgpu::TexelCopyBufferInfo dst{};
 	dst.buffer = readbackBuffer;
 	dst.layout.bytesPerRow = bytesPerRow;
-	dst.layout.rowsPerImage = height;
+	dst.layout.rowsPerImage = rowsPerImage;
 
 	wgpu::Extent3D extent{};
 	extent.width = static_cast<uint32_t>(parameter_.Size.X);

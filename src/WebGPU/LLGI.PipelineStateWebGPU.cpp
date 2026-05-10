@@ -241,14 +241,14 @@ bool PipelineStateWebGPU::Compile()
 	desc.vertex.entryPoint = entryPointName;
 
 	desc.vertex.bufferCount = 1;
-	std::array<wgpu::VertexBufferLayout, 1> bufferLayouts;
+	std::array<wgpu::VertexBufferLayout, 1> bufferLayouts{};
 	desc.vertex.buffers = bufferLayouts.data();
 
 	bufferLayouts[0].attributeCount = VertexLayoutCount;
 	bufferLayouts[0].arrayStride = 0;
 	bufferLayouts[0].stepMode = wgpu::VertexStepMode::Vertex;
 
-	std::array<wgpu::VertexAttribute, VertexLayoutMax> attributes;
+	std::array<wgpu::VertexAttribute, VertexLayoutMax> attributes{};
 	bufferLayouts[0].attributes = attributes.data();
 
 	int offset = 0;
@@ -264,7 +264,7 @@ bool PipelineStateWebGPU::Compile()
 	auto pixelShader = static_cast<ShaderWebGPU*>(shaders_[static_cast<int>(ShaderStageType::Pixel)]);
 
 	// TODO : support blend enabled
-	wgpu::BlendState blendState;
+	wgpu::BlendState blendState{};
 	blendState.color.srcFactor = Convert(BlendSrcFunc);
 	blendState.color.dstFactor = Convert(BlendDstFunc);
 	blendState.color.operation = Convert(BlendEquationRGB);
@@ -272,7 +272,7 @@ bool PipelineStateWebGPU::Compile()
 	blendState.alpha.dstFactor = Convert(BlendDstFuncAlpha);
 	blendState.alpha.operation = Convert(BlendEquationAlpha);
 
-	std::array<wgpu::ColorTargetState, RenderTargetMax> colorTargetStates;
+	std::array<wgpu::ColorTargetState, RenderTargetMax> colorTargetStates{};
 
 	for (size_t i = 0; i < renderPassPipelineState_->Key.RenderTargetFormats.size(); i++)
 	{
@@ -306,7 +306,7 @@ bool PipelineStateWebGPU::Compile()
 
 	if (hasStencil && IsStencilTestEnabled)
 	{
-		wgpu::StencilFaceState fs;
+		wgpu::StencilFaceState fs{};
 
 		fs.compare = Convert(StencilCompareFunc);
 		fs.depthFailOp = Convert(StencilDepthFailOp);
@@ -321,7 +321,7 @@ bool PipelineStateWebGPU::Compile()
 	}
 	else
 	{
-		wgpu::StencilFaceState fs;
+		wgpu::StencilFaceState fs{};
 
 		fs.depthFailOp = wgpu::StencilOperation::Keep;
 		fs.failOp = wgpu::StencilOperation::Keep;

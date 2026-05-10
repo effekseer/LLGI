@@ -5,11 +5,23 @@
 #include "LLGI.TextureWebGPU.h"
 
 #include <algorithm>
+#include <array>
 
 namespace LLGI
 {
 namespace
 {
+constexpr uint32_t TextureBytesPerRowAlignment = 256;
+constexpr std::array<wgpu::FilterMode, 2> TextureFilterModes = {
+	wgpu::FilterMode::Nearest,
+	wgpu::FilterMode::Linear,
+};
+constexpr std::array<wgpu::AddressMode, 3> TextureAddressModes = {
+	wgpu::AddressMode::ClampToEdge,
+	wgpu::AddressMode::Repeat,
+	wgpu::AddressMode::MirrorRepeat,
+};
+
 ShaderBindingResourceTypeWebGPU GetTextureBindingResourceType(TextureWebGPU* texture)
 {
 	if (texture != nullptr && BitwiseContains(texture->GetParameter().Usage, TextureUsageType::Storage))
@@ -106,43 +118,44 @@ CommandListWebGPU::CommandListWebGPU(wgpu::Device device) : device_(device)
 	fallbackTexture_ = device_.CreateTexture(&fallbackTextureDesc);
 	fallbackTextureView_ = fallbackTexture_.CreateView();
 
-	const uint8_t fallbackTexel[4] = {255, 255, 255, 255};
+	std::array<uint8_t, TextureBytesPerRowAlignment> fallbackTextureData{};
+	fallbackTextureData[0] = 255;
+	fallbackTextureData[1] = 255;
+	fallbackTextureData[2] = 255;
+	fallbackTextureData[3] = 255;
 	wgpu::TexelCopyTextureInfo fallbackDst{};
 	fallbackDst.texture = fallbackTexture_;
 	fallbackDst.aspect = wgpu::TextureAspect::All;
 	wgpu::TexelCopyBufferLayout fallbackLayout{};
-	fallbackLayout.bytesPerRow = 4;
+	fallbackLayout.bytesPerRow = TextureBytesPerRowAlignment;
+	fallbackLayout.rowsPerImage = 1;
 	wgpu::Extent3D fallbackExtent{};
 	fallbackExtent.width = 1;
 	fallbackExtent.height = 1;
 	fallbackExtent.depthOrArrayLayers = 1;
-	device_.GetQueue().WriteTexture(&fallbackDst, fallbackTexel, sizeof(fallbackTexel), &fallbackLayout, &fallbackExtent);
+	device_.GetQueue().WriteTexture(
+		&fallbackDst,
+		fallbackTextureData.data(),
+		fallbackTextureData.size(),
+		&fallbackLayout,
+		&fallbackExtent);
 
 	for (int w = 0; w < 3; w++)
 	{
 		for (int f = 0; f < 2; f++)
 		{
-			std::array<wgpu::FilterMode, 2> filters;
-			filters[0] = wgpu::FilterMode::Nearest;
-			filters[1] = wgpu::FilterMode::Linear;
+			wgpu::SamplerDescriptor samplerDesc{};
 
-			std::array<wgpu::AddressMode, 3> am;
-			am[0] = wgpu::AddressMode::ClampToEdge;
-			am[1] = wgpu::AddressMode::Repeat;
-			am[2] = wgpu::AddressMode::MirrorRepeat;
-
-			wgpu::SamplerDescriptor samplerDesc;
-
-			samplerDesc.magFilter = filters[f];
-			samplerDesc.minFilter = filters[f];
+			samplerDesc.magFilter = TextureFilterModes[f];
+			samplerDesc.minFilter = TextureFilterModes[f];
 			// LLGI exposes min/mag filtering only, so keep mip selection point-filtered.
 			samplerDesc.mipmapFilter = wgpu::MipmapFilterMode::Nearest;
 			samplerDesc.lodMinClamp = 0.0f;
 			samplerDesc.lodMaxClamp = 32.0f;
 			samplerDesc.maxAnisotropy = 1;
-			samplerDesc.addressModeU = am[w];
-			samplerDesc.addressModeV = am[w];
-			samplerDesc.addressModeW = am[w];
+			samplerDesc.addressModeU = TextureAddressModes[w];
+			samplerDesc.addressModeV = TextureAddressModes[w];
+			samplerDesc.addressModeW = TextureAddressModes[w];
 			samplers_[w][f] = device.CreateSampler(&samplerDesc);
 		}
 	}
@@ -552,9 +565,9 @@ void CommandListWebGPU::CopyTexture(
 	auto srcTex = static_cast<TextureWebGPU*>(src);
 	auto dstTex = static_cast<TextureWebGPU*>(dst);
 
-	wgpu::TexelCopyTextureInfo srcTexCopy;
-	wgpu::TexelCopyTextureInfo dstTexCopy;
-	wgpu::Extent3D extend3d;
+	wgpu::TexelCopyTextureInfo srcTexCopy{};
+	wgpu::TexelCopyTextureInfo dstTexCopy{};
+	wgpu::Extent3D extend3d{};
 
 	srcTexCopy.texture = srcTex->GetTexture();
 	srcTexCopy.origin = {static_cast<uint32_t>(srcPos.X), static_cast<uint32_t>(srcPos.Y), static_cast<uint32_t>(srcLayer + srcPos.Z)};

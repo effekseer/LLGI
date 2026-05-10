@@ -1,5 +1,7 @@
 import http from 'node:http';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
@@ -88,6 +90,18 @@ function delay(ms) {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function withTimeout(promise, timeoutMs, message) {
+	let timeoutId;
+	const timeout = new Promise((_, reject) => {
+		timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+	});
+	try {
+		return await Promise.race([promise, timeout]);
+	} finally {
+		clearTimeout(timeoutId);
+	}
+}
+
 async function getFreePort() {
 	const probe = http.createServer();
 	await new Promise((resolve) => probe.listen(0, '127.0.0.1', resolve));
@@ -114,12 +128,165 @@ async function waitForDevToolsHttp(devtoolsPort, chrome, getStderr) {
 	throw new Error('Timed out waiting for Chrome DevTools HTTP endpoint.');
 }
 
-async function createPage(devtoolsPort, pageUrl) {
-	const response = await fetch(`http://127.0.0.1:${devtoolsPort}/json/new?${encodeURIComponent(pageUrl)}`, {method: 'PUT'});
+async function createPage(devtoolsPort) {
+	const response = await fetch(`http://127.0.0.1:${devtoolsPort}/json/new?${encodeURIComponent('about:blank')}`, {method: 'PUT'});
 	if (!response.ok) {
 		throw new Error(`Failed to create Chrome page: ${response.status} ${response.statusText}`);
 	}
 	return await response.json();
+}
+
+class RawWebSocket {
+	constructor(webSocketUrl, onText) {
+		this.url = new URL(webSocketUrl);
+		this.onText = onText;
+		this.socket = null;
+		this.buffer = Buffer.alloc(0);
+		this.handshakeDone = false;
+	}
+
+	async open() {
+		await withTimeout(new Promise((resolve, reject) => {
+			const key = crypto.randomBytes(16).toString('base64');
+			const onError = (error) => {
+				if (!this.handshakeDone) {
+					reject(error);
+				}
+			};
+			this.socket = net.createConnection({host: this.url.hostname, port: Number(this.url.port)}, () => {
+				const requestPath = `${this.url.pathname}${this.url.search}`;
+				this.socket.write([
+					`GET ${requestPath} HTTP/1.1`,
+					`Host: ${this.url.host}`,
+					'Upgrade: websocket',
+					'Connection: Upgrade',
+					'Origin: http://127.0.0.1',
+					`Sec-WebSocket-Key: ${key}`,
+					'Sec-WebSocket-Version: 13',
+					'\r\n',
+				].join('\r\n'));
+			});
+			this.socket.on('error', onError);
+			this.socket.on('data', (chunk) => {
+				try {
+					this.handleData(chunk, () => {
+						this.socket.off('error', onError);
+						this.socket.on('error', () => {});
+						resolve();
+					}, reject);
+				} catch (error) {
+					reject(error);
+				}
+			});
+		}), 10000, 'Timed out opening Chrome DevTools WebSocket.');
+	}
+
+	handleData(chunk, resolveOpen, rejectOpen) {
+		this.buffer = Buffer.concat([this.buffer, chunk]);
+		if (!this.handshakeDone) {
+			const headerEnd = this.buffer.indexOf('\r\n\r\n');
+			if (headerEnd < 0) {
+				return;
+			}
+
+			const header = this.buffer.subarray(0, headerEnd).toString();
+			if (!header.startsWith('HTTP/1.1 101')) {
+				rejectOpen(new Error(`Chrome DevTools WebSocket handshake failed: ${header.split('\r\n')[0]}`));
+				return;
+			}
+
+			this.handshakeDone = true;
+			this.buffer = this.buffer.subarray(headerEnd + 4);
+			resolveOpen();
+		}
+
+		this.parseFrames();
+	}
+
+	parseFrames() {
+		while (this.buffer.length >= 2) {
+			const first = this.buffer[0];
+			const second = this.buffer[1];
+			const opcode = first & 0x0f;
+			const masked = (second & 0x80) !== 0;
+			let length = second & 0x7f;
+			let offset = 2;
+
+			if (length === 126) {
+				if (this.buffer.length < offset + 2) return;
+				length = this.buffer.readUInt16BE(offset);
+				offset += 2;
+			} else if (length === 127) {
+				if (this.buffer.length < offset + 8) return;
+				const bigLength = this.buffer.readBigUInt64BE(offset);
+				if (bigLength > BigInt(Number.MAX_SAFE_INTEGER)) {
+					throw new Error('Chrome DevTools WebSocket frame is too large.');
+				}
+				length = Number(bigLength);
+				offset += 8;
+			}
+
+			let mask;
+			if (masked) {
+				if (this.buffer.length < offset + 4) return;
+				mask = this.buffer.subarray(offset, offset + 4);
+				offset += 4;
+			}
+
+			if (this.buffer.length < offset + length) return;
+			let payload = Buffer.from(this.buffer.subarray(offset, offset + length));
+			this.buffer = this.buffer.subarray(offset + length);
+
+			if (masked) {
+				for (let i = 0; i < payload.length; i++) {
+					payload[i] ^= mask[i % 4];
+				}
+			}
+
+			if (opcode === 0x1) {
+				this.onText(payload.toString());
+			} else if (opcode === 0x8) {
+				this.socket.end();
+			} else if (opcode === 0x9) {
+				this.sendFrame(0xA, payload);
+			}
+		}
+	}
+
+	sendText(text) {
+		this.sendFrame(0x1, Buffer.from(text));
+	}
+
+	sendFrame(opcode, payload = Buffer.alloc(0)) {
+		const mask = crypto.randomBytes(4);
+		let header;
+		if (payload.length < 126) {
+			header = Buffer.alloc(2);
+			header[1] = 0x80 | payload.length;
+		} else if (payload.length < 65536) {
+			header = Buffer.alloc(4);
+			header[1] = 0x80 | 126;
+			header.writeUInt16BE(payload.length, 2);
+		} else {
+			header = Buffer.alloc(10);
+			header[1] = 0x80 | 127;
+			header.writeBigUInt64BE(BigInt(payload.length), 2);
+		}
+
+		header[0] = 0x80 | opcode;
+		const maskedPayload = Buffer.from(payload);
+		for (let i = 0; i < maskedPayload.length; i++) {
+			maskedPayload[i] ^= mask[i % 4];
+		}
+		this.socket.write(Buffer.concat([header, mask, maskedPayload]));
+	}
+
+	close() {
+		if (this.socket) {
+			this.socket.end();
+			this.socket.destroy();
+		}
+	}
 }
 
 class CdpClient {
@@ -127,18 +294,11 @@ class CdpClient {
 		this.nextId = 1;
 		this.pending = new Map();
 		this.handlers = new Map();
-		this.socket = new WebSocket(webSocketUrl);
-		this.socket.addEventListener('message', (event) => this.onMessage(event));
+		this.socket = new RawWebSocket(webSocketUrl, (text) => this.onMessage(text));
 	}
 
 	async open() {
-		if (this.socket.readyState === WebSocket.OPEN) {
-			return;
-		}
-		await new Promise((resolve, reject) => {
-			this.socket.addEventListener('open', resolve, {once: true});
-			this.socket.addEventListener('error', reject, {once: true});
-		});
+		await this.socket.open();
 	}
 
 	on(eventName, handler) {
@@ -147,8 +307,8 @@ class CdpClient {
 		this.handlers.set(eventName, handlers);
 	}
 
-	onMessage(event) {
-		const message = JSON.parse(event.data);
+	onMessage(text) {
+		const message = JSON.parse(text);
 		if (message.id && this.pending.has(message.id)) {
 			const {resolve, reject} = this.pending.get(message.id);
 			this.pending.delete(message.id);
@@ -165,12 +325,12 @@ class CdpClient {
 		}
 	}
 
-	send(method, params = {}) {
+	send(method, params = {}, timeoutMs = 10000) {
 		const id = this.nextId++;
-		this.socket.send(JSON.stringify({id, method, params}));
-		return new Promise((resolve, reject) => {
+		this.socket.sendText(JSON.stringify({id, method, params}));
+		return withTimeout(new Promise((resolve, reject) => {
 			this.pending.set(id, {resolve, reject});
-		});
+		}), timeoutMs, `Timed out waiting for Chrome DevTools method ${method}.`);
 	}
 
 	close() {
@@ -214,10 +374,10 @@ let chromeStderr = '';
 try {
 	userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'llgi-webgpu-chrome-'));
 	const devtoolsPort = await getFreePort();
-	chrome = spawn(executablePath, [
-		'--headless=new',
+	const browserArgs = [
 		`--remote-debugging-port=${devtoolsPort}`,
 		'--remote-debugging-address=127.0.0.1',
+		'--remote-allow-origins=*',
 		`--user-data-dir=${userDataDir}`,
 		'--no-first-run',
 		'--no-default-browser-check',
@@ -225,14 +385,18 @@ try {
 		'--ignore-gpu-blocklist',
 		'--use-angle=d3d11',
 		'about:blank',
-	], {stdio: ['ignore', 'ignore', 'pipe']});
+	];
+	if (process.env.LLGI_WEBGPU_HEADLESS !== '0') {
+		browserArgs.unshift('--headless=new');
+	}
+	chrome = spawn(executablePath, browserArgs, {stdio: ['ignore', 'ignore', 'pipe']});
 	chrome.stderr.on('data', (chunk) => {
 		chromeStderr += chunk.toString();
 	});
 	chromeExit = new Promise((resolve) => chrome.once('exit', resolve));
 
 	await waitForDevToolsHttp(devtoolsPort, chrome, () => chromeStderr.trim());
-	const page = await createPage(devtoolsPort, url);
+	const page = await createPage(devtoolsPort);
 	client = new CdpClient(page.webSocketDebuggerUrl);
 	await client.open();
 	client.on('Runtime.consoleAPICalled', (params) => {
@@ -247,6 +411,7 @@ try {
 
 	await client.send('Runtime.enable');
 	await client.send('Page.enable');
+	await client.send('Page.navigate', {url});
 	const value = await waitForTestResult(client, 60000);
 	if (!value || value.status !== 'passed') {
 		console.error(value && value.message ? value.message : 'LLGI browser WebGPU test failed.');
@@ -261,7 +426,7 @@ try {
 	}
 } finally {
 	if (client) {
-		await client.send('Browser.close').catch(() => {});
+		await client.send('Browser.close', {}, 2000).catch(() => {});
 		client.close();
 	}
 	if (chrome) {
@@ -272,7 +437,11 @@ try {
 		}
 	}
 	if (userDataDir) {
-		fs.rmSync(userDataDir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100});
+		try {
+			fs.rmSync(userDataDir, {recursive: true, force: true, maxRetries: 10, retryDelay: 100});
+		} catch (error) {
+			console.warn(`Failed to remove temporary browser profile ${userDataDir}: ${error.message}`);
+		}
 	}
 	await new Promise((resolve) => server.close(resolve));
 }
