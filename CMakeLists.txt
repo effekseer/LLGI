@@ -378,10 +378,6 @@ endif()
 
 add_subdirectory("src")
 
-if(BUILD_WEBGPU AND NOT TARGET ShaderTranspilerCore)
-  add_subdirectory("tools/ShaderTranspilerCore")
-endif()
-
 if(BUILD_TEST OR BUILD_WEBGPU_BROWSER_TEST)
   add_subdirectory("src_test")
 endif()
