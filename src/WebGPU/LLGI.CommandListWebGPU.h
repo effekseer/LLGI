@@ -51,11 +51,19 @@ public:
 
 	void Begin() override;
 
+	bool BeginWithPlatform(void* platformContextPtr) override;
+
 	void End() override;
+
+	void EndWithPlatform() override;
 
 	void BeginRenderPass(RenderPass* renderPass) override;
 
 	void EndRenderPass() override;
+
+	bool BeginRenderPassWithPlatformPtr(void* platformPtr) override;
+
+	bool EndRenderPassWithPlatformPtr() override;
 
 	void Draw(int32_t primitiveCount, int32_t instanceCount) override;
 

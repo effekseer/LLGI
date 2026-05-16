@@ -171,12 +171,36 @@ void CommandListWebGPU::Begin()
 	CommandList::Begin();
 }
 
+bool CommandListWebGPU::BeginWithPlatform(void* platformContextPtr)
+{
+	if (platformContextPtr == nullptr)
+	{
+		Begin();
+		return true;
+	}
+
+	commandBuffer_ = nullptr;
+	commandEncorder_ = wgpu::CommandEncoder::Acquire(reinterpret_cast<WGPUCommandEncoder>(platformContextPtr));
+	ResetRenderBindGroupCaches();
+	ResetComputeBindGroupCaches();
+
+	return CommandList::BeginWithPlatform(platformContextPtr);
+}
+
 void CommandListWebGPU::End()
 {
 	commandBuffer_ = commandEncorder_.Finish();
 	commandEncorder_ = nullptr;
 
 	CommandList::End();
+}
+
+void CommandListWebGPU::EndWithPlatform()
+{
+	commandEncorder_ = nullptr;
+	commandBuffer_ = nullptr;
+
+	CommandList::EndWithPlatform();
 }
 
 void CommandListWebGPU::BeginRenderPass(RenderPass* renderPass)
@@ -202,6 +226,31 @@ void CommandListWebGPU::EndRenderPass()
 		renderPassEncorder_ = nullptr;
 	}
 	CommandList::EndRenderPass();
+}
+
+bool CommandListWebGPU::BeginRenderPassWithPlatformPtr(void* platformPtr)
+{
+	if (platformPtr == nullptr)
+	{
+		return false;
+	}
+
+	EndComputePass();
+	renderPassEncorder_ = wgpu::RenderPassEncoder::Acquire(reinterpret_cast<WGPURenderPassEncoder>(platformPtr));
+	ResetRenderBindGroupCaches();
+
+	return CommandList::BeginRenderPassWithPlatformPtr(platformPtr);
+}
+
+bool CommandListWebGPU::EndRenderPassWithPlatformPtr()
+{
+	if (renderPassEncorder_ != nullptr)
+	{
+		renderPassEncorder_ = nullptr;
+	}
+
+	CommandList::EndRenderPass();
+	return true;
 }
 
 void CommandListWebGPU::BeginComputePass()
