@@ -241,6 +241,21 @@ void CommandListVulkan::AssignTexturesToCommandList(const vk::DescriptorSet& des
 	}
 }
 
+void CommandListVulkan::PrepareComputeBuffersForGraphics()
+{
+	for (int unit_ind = 0; unit_ind < NumComputeBuffer; unit_ind++)
+	{
+		BindingComputeBuffer cb_;
+		GetCurrentComputeBuffer(unit_ind, cb_);
+
+		if (cb_.computeBuffer == nullptr)
+			continue;
+
+		auto cb = static_cast<BufferVulkan*>(cb_.computeBuffer);
+		cb->ResourceBarrier(currentCommandBuffer_, vk::AccessFlagBits::eShaderRead);
+	}
+}
+
 CommandListVulkan::~CommandListVulkan()
 {
 	if (commandBuffers_.size() > 0)
@@ -506,20 +521,6 @@ void CommandListVulkan::Draw(int32_t primitiveCount, int32_t instanceCount)
 	AssignComputeBuffersToCommandList(
 		descriptorSets[2], writeDescriptorSets.data(), writeDescriptorIndex, descriptorBufferInfos.data(), descriptorBufferIndex);
 
-	// Assign compute buffers
-	for (int unit_ind = 0; unit_ind < NumComputeBuffer; unit_ind++)
-	{
-		BindingComputeBuffer cb_;
-		GetCurrentComputeBuffer(unit_ind, cb_);
-
-		if (cb_.computeBuffer == nullptr)
-			continue;
-
-		// Cannot change here
-		// auto cb = static_cast<BufferVulkan*>(cb_.computeBuffer);
-		// cb->ResourceBarrier(currentCommandBuffer_, vk::AccessFlagBits::eTransferRead);
-	}
-
 	if (writeDescriptorIndex > 0)
 	{
 		graphics_->GetDevice().updateDescriptorSets(writeDescriptorIndex, writeDescriptorSets.data(), 0, nullptr);
@@ -669,9 +670,13 @@ void CommandListVulkan::CopyBuffer(Buffer* src, Buffer* dst)
 	copyRegion.dstOffset = dstBuf->GetOffset();
 	copyRegion.size = srcBuf->GetSize();
 
+	srcBuf->ResourceBarrier(currentCommandBuffer_, vk::AccessFlagBits::eTransferRead);
 	dstBuf->ResourceBarrier(currentCommandBuffer_, vk::AccessFlagBits::eTransferWrite);
 	currentCommandBuffer_.copyBuffer(srcGpuBuf, dstGpuBuf, copyRegion);
 	dstBuf->ResourceBarrier(currentCommandBuffer_, vk::AccessFlagBits::eTransferRead);
+
+	RegisterReferencedObject(src);
+	RegisterReferencedObject(dst);
 }
 
 void CommandListVulkan::BeginRenderPass(RenderPass* renderPass)
@@ -682,6 +687,8 @@ void CommandListVulkan::BeginRenderPass(RenderPass* renderPass)
 		CommandList::BeginRenderPass(renderPass);
 		return;
 	}
+
+	PrepareComputeBuffersForGraphics();
 
 	vk::ClearColorValue clearColor(std::array<float, 4>{renderPass_->GetClearColor().R / 255.0f,
 														renderPass_->GetClearColor().G / 255.0f,
@@ -929,9 +936,11 @@ void CommandListVulkan::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ,
 		if (cb_.computeBuffer == nullptr)
 			continue;
 
-		// Cannot change here
-		// auto cb = static_cast<BufferVulkan*>(cb_.computeBuffer);
-		// cb->ResourceBarrier(currentCommandBuffer_, vk::AccessFlagBits::eTransferRead);
+		auto cb = static_cast<BufferVulkan*>(cb_.computeBuffer);
+		const vk::AccessFlags accessFlags = cb_.is_read_only
+												? vk::AccessFlags(vk::AccessFlagBits::eShaderRead)
+												: vk::AccessFlags(vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite);
+		cb->ResourceBarrier(currentCommandBuffer_, accessFlags);
 	}
 
 	if (writeDescriptorIndex > 0)

@@ -62,7 +62,8 @@ bool BufferDX12::Initialize(GraphicsDX12* graphics, const BufferUsageType usage,
 		flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 	}
 
-	if (BitwiseContains(usage, BufferUsageType::ComputeRead) && !BitwiseContains(usage, BufferUsageType::ComputeWrite))
+	if (BitwiseContains(usage, BufferUsageType::ComputeRead) && !BitwiseContains(usage, BufferUsageType::ComputeWrite) &&
+		!BitwiseContains(usage, BufferUsageType::CopyDst))
 	{
 		state_ |= D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 	}

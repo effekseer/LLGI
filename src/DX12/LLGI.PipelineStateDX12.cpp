@@ -41,6 +41,25 @@ void PipelineStateDX12::SetShader(ShaderStageType stage, Shader* shader)
 
 bool PipelineStateDX12::Compile()
 {
+	byteAddressSRVs_.fill(false);
+	byteAddressUAVs_.fill(false);
+	for (auto shader : shaders_)
+	{
+		auto shaderDX12 = static_cast<ShaderDX12*>(shader);
+		if (shaderDX12 == nullptr)
+		{
+			continue;
+		}
+
+		const auto& srvs = shaderDX12->GetByteAddressSRVs();
+		const auto& uavs = shaderDX12->GetByteAddressUAVs();
+		for (int32_t i = 0; i < NumComputeBuffer; i++)
+		{
+			byteAddressSRVs_[i] = byteAddressSRVs_[i] || srvs[i];
+			byteAddressUAVs_[i] = byteAddressUAVs_[i] || uavs[i];
+		}
+	}
+
 	if (shaders_[static_cast<int>(ShaderStageType::Compute)] != nullptr)
 	{
 		auto res = CreateComputeRootSignature();

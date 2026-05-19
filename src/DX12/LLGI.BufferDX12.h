@@ -35,6 +35,7 @@ public:
 	ID3D12Resource* Get() { return buffer_; }
 
 	D3D12_RESOURCE_STATES GetResourceState() { return state_; }
+	void SetResourceState(D3D12_RESOURCE_STATES state) { state_ = state; }
 };
 
 } // namespace LLGI

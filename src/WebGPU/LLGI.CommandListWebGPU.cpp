@@ -611,6 +611,8 @@ void CommandListWebGPU::CopyTexture(
 		return;
 	}
 
+	EndComputePass();
+
 	auto srcTex = static_cast<TextureWebGPU*>(src);
 	auto dstTex = static_cast<TextureWebGPU*>(dst);
 
@@ -661,7 +663,12 @@ void CommandListWebGPU::CopyBuffer(Buffer* src, Buffer* dst)
 		return;
 	}
 
+	EndComputePass();
+
 	commandEncorder_.CopyBufferToBuffer(srcBuffer->GetBuffer(), 0, dstBuffer->GetBuffer(), 0, std::min(srcBuffer->GetSize(), dstBuffer->GetSize()));
+
+	RegisterReferencedObject(src);
+	RegisterReferencedObject(dst);
 }
 
 void CommandListWebGPU::WaitUntilCompleted()

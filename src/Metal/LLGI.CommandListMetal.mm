@@ -628,6 +628,9 @@ void CommandListMetal::CopyBuffer(Buffer* src, Buffer* dst)
     [encoder copyFromBuffer:srcGpuBuf sourceOffset:srcBuf->GetOffset() toBuffer:dstGpuBuf destinationOffset:dstBuf->GetOffset() size:srcBuf->GetSize()];
     [encoder endEncoding];
     [encoder release];
+
+	RegisterReferencedObject(src);
+	RegisterReferencedObject(dst);
 }
 
 

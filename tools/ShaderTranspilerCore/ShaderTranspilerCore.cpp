@@ -10,6 +10,8 @@
 #include <glslang/Public/ShaderLang.h>
 
 #include <functional>
+#include <set>
+#include <unordered_map>
 
 #if (ENABLE_SPIRVCROSS_WITHOUT_INSTALL)
 #include <spirv_cross.hpp>
@@ -52,19 +54,132 @@ std::string Replace(std::string target, std::string from_, std::string to_)
 }
 
 #if (ENABLE_WEBGPU)
+struct WGSLStructInfo
+{
+	std::unordered_map<std::string, std::string> ArrayMembers;
+	std::set<std::string> SquareMatrixMembers;
+};
+
 std::string NormalizeWGSLMatrixDirection(std::string code)
 {
 	static const std::regex modelMatrixRegex(R"(\((localPos|localPosition|worldPos|localNormal|localBinormal|localTangent) \* (mModel)\))");
 	static const std::regex cameraMatrixRegex(R"(\((\w+) \* (v\._\w+_mCameraProj)\))");
 	static const std::regex cameraMatrixExpressionRegex(R"(\(\(([^()]+ \+ [^()]+)\) \* (v\._\w+_mCameraProj)\))");
+	static const std::regex cameraProjMatrixRegex(
+		R"(\(\((vec4<f32>\([^()]+\)) \* ([A-Za-z_]\w*\.[A-Za-z_]\w*\.CameraMat)\) \* ([A-Za-z_]\w*\.[A-Za-z_]\w*\.ProjMat)\))");
 
 	code = std::regex_replace(code, modelMatrixRegex, "($2 * $1)");
 	code = std::regex_replace(code, cameraMatrixRegex, "($2 * $1)");
 	code = std::regex_replace(code, cameraMatrixExpressionRegex, "($2 * ($1))");
+	code = std::regex_replace(code, cameraProjMatrixRegex, "($3 * ($2 * $1))");
 	code = Replace(code, "worldNormal = normalize(worldNormal);", "worldNormal = vec4<f32>(normalize(worldNormal.xyz), 0.0f);");
 	code = Replace(code, "worldBinormal = normalize(worldBinormal);", "worldBinormal = vec4<f32>(normalize(worldBinormal.xyz), 0.0f);");
 	code = Replace(code, "worldTangent = normalize(worldTangent);", "worldTangent = vec4<f32>(normalize(worldTangent.xyz), 0.0f);");
 	return code;
+}
+
+std::unordered_map<std::string, WGSLStructInfo> CollectWGSLStructInfo(const std::string& code)
+{
+	std::unordered_map<std::string, WGSLStructInfo> structInfo;
+	const std::regex structBeginRegex(R"(^\s*struct\s+([A-Za-z_]\w*)\s*\{\s*$)");
+	const std::regex structEndRegex(R"(^\s*\}\s*$)");
+	const std::regex arrayMemberRegex(R"(^\s*([A-Za-z_]\w*)\s*:\s*array<([A-Za-z_]\w*)>\s*,\s*$)");
+	const std::regex matrixMemberRegex(R"(^\s*([A-Za-z_]\w*)\s*:\s*mat([234])x([234])<f32>\s*,\s*$)");
+
+	std::stringstream input(code);
+	std::string line;
+	std::string currentStruct;
+	while (std::getline(input, line))
+	{
+		std::smatch match;
+		if (currentStruct.empty())
+		{
+			if (std::regex_match(line, match, structBeginRegex))
+			{
+				currentStruct = match[1].str();
+				structInfo[currentStruct] = WGSLStructInfo{};
+			}
+			continue;
+		}
+
+		if (std::regex_match(line, structEndRegex))
+		{
+			currentStruct.clear();
+			continue;
+		}
+
+		if (std::regex_match(line, match, arrayMemberRegex))
+		{
+			structInfo[currentStruct].ArrayMembers[match[1].str()] = match[2].str();
+		}
+		else if (std::regex_match(line, match, matrixMemberRegex) && match[2].str() == match[3].str())
+		{
+			structInfo[currentStruct].SquareMatrixMembers.insert(match[1].str());
+		}
+	}
+
+	return structInfo;
+}
+
+std::string NormalizeWGSLSquareMatrixStorageStores(std::string code)
+{
+	const auto structInfo = CollectWGSLStructInfo(code);
+	const std::regex storageVarRegex(R"(^\s*@group\([^)]+\)\s+@binding\([^)]+\)\s+var<storage[^>]*>\s+([A-Za-z_]\w*)\s*:\s*([A-Za-z_]\w*)\s*;\s*$)");
+	const std::regex storageElementAliasRegex(R"(^(\s*)let\s+([A-Za-z_]\w*)\s*=\s*&\(([A-Za-z_]\w*)\.([A-Za-z_]\w*)\[.*\]\)\s*;\s*$)");
+	const std::regex storageStoreRegex(R"(^(\s*)\(\*\(([A-Za-z_]\w*)\)\)\.([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)\.([A-Za-z_]\w*)\s*;\s*$)");
+
+	std::unordered_map<std::string, std::string> storageVarElementStructs;
+	std::unordered_map<std::string, std::string> aliasElementStructs;
+	std::stringstream input(code);
+	std::stringstream output;
+	std::string line;
+	while (std::getline(input, line))
+	{
+		std::smatch match;
+		if (std::regex_match(line, match, storageVarRegex))
+		{
+			const auto storageName = match[1].str();
+			const auto wrapperStruct = match[2].str();
+			auto wrapperIt = structInfo.find(wrapperStruct);
+			if (wrapperIt != structInfo.end() && wrapperIt->second.ArrayMembers.size() == 1)
+			{
+				storageVarElementStructs[storageName] = wrapperIt->second.ArrayMembers.begin()->second;
+			}
+		}
+		else if (std::regex_match(line, match, storageElementAliasRegex))
+		{
+			const auto aliasName = match[2].str();
+			const auto storageName = match[3].str();
+			auto storageIt = storageVarElementStructs.find(storageName);
+			if (storageIt != storageVarElementStructs.end())
+			{
+				aliasElementStructs[aliasName] = storageIt->second;
+			}
+		}
+		else if (std::regex_match(line, match, storageStoreRegex))
+		{
+			const auto indent = match[1].str();
+			const auto aliasName = match[2].str();
+			const auto lhsField = match[3].str();
+			const auto rhsName = match[4].str();
+			const auto rhsField = match[5].str();
+			auto aliasIt = aliasElementStructs.find(aliasName);
+			if (aliasIt != aliasElementStructs.end())
+			{
+				auto structIt = structInfo.find(aliasIt->second);
+				if (structIt != structInfo.end() && lhsField == rhsField &&
+					structIt->second.SquareMatrixMembers.count(lhsField) > 0)
+				{
+					output << indent << "(*(" << aliasName << "))." << lhsField << " = transpose(" << rhsName << "." << rhsField << ");\n";
+					continue;
+				}
+			}
+		}
+
+		output << line << "\n";
+	}
+
+	return output.str();
 }
 
 std::string NormalizeWGSLForLLGI(std::string code, ShaderStageType shaderStageType, bool fixMatrixDirection)
@@ -110,6 +225,8 @@ std::string NormalizeWGSLForLLGI(std::string code, ShaderStageType shaderStageTy
 	{
 		code = NormalizeWGSLMatrixDirection(code);
 	}
+
+	code = NormalizeWGSLSquareMatrixStorageStores(code);
 
 	return code;
 }
@@ -278,6 +395,7 @@ bool SPIRVToHLSLTranspiler::Transpile(const std::shared_ptr<SPIRV>& spirv, LLGI:
 
 	spirv_cross::CompilerHLSL::Options targetOptions;
 	targetOptions.shader_model = shaderModel_;
+	targetOptions.force_storage_buffer_as_uav = isDX12_ && shaderStageType == LLGI::ShaderStageType::Compute;
 	compiler.set_hlsl_options(targetOptions);
 
 	code_ = compiler.compile();

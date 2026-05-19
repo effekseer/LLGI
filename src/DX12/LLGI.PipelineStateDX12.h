@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include "../LLGI.CommandList.h"
 #include "../LLGI.PipelineState.h"
 #include "../LLGI.Shader.h"
 #include "LLGI.BaseDX12.h"
@@ -25,6 +26,8 @@ private:
 	ID3DBlob* computeSignature_ = nullptr;
 	ID3D12RootSignature* rootSignature_ = nullptr;
 	ID3D12RootSignature* computeRootSignature_ = nullptr;
+	std::array<bool, NumComputeBuffer> byteAddressSRVs_ = {};
+	std::array<bool, NumComputeBuffer> byteAddressUAVs_ = {};
 
 	bool CreateRootSignature();
 	bool CreateComputeRootSignature();
@@ -45,6 +48,9 @@ public:
 
 	ID3D12PipelineState* GetComputePipelineState() { return computePipelineState_; }
 	ID3D12RootSignature* GetComputeRootSignature() { return computeRootSignature_; }
+
+	bool IsByteAddressSRV(int32_t unit) const { return unit >= 0 && unit < NumComputeBuffer && byteAddressSRVs_[unit]; }
+	bool IsByteAddressUAV(int32_t unit) const { return unit >= 0 && unit < NumComputeBuffer && byteAddressUAVs_[unit]; }
 };
 
 } // namespace LLGI

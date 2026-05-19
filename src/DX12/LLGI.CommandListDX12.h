@@ -43,7 +43,7 @@ private:
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC GetSRVDescFromTexture(const TextureDX12* texture);
 	D3D12_SAMPLER_DESC GeSamplerDescFromBindingTexture(const BindingTexture& texture);
-	D3D12_SHADER_RESOURCE_VIEW_DESC GetSRVDescFromBindingBuffer(const BindingComputeBuffer& buffer);
+	D3D12_SHADER_RESOURCE_VIEW_DESC GetSRVDescFromBindingBuffer(const BindingComputeBuffer& buffer, bool isRawBuffer);
 	bool CreateMipmapRootSignature();
 	ID3D12PipelineState* GetMipmapPipelineState(DXGI_FORMAT format);
 	

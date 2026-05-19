@@ -67,6 +67,8 @@ private:
 									 int& descImageOffset,
 									 const std::function<bool(TextureUsageType)>& filter);
 
+	void PrepareComputeBuffersForGraphics();
+
 public:
 	CommandListVulkan() = default;
 	~CommandListVulkan() override;

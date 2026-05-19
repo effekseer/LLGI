@@ -20,7 +20,7 @@ private:
 	int32_t offset_ = 0;
 
 	// Should specify None for the first time.
-	vk::AccessFlagBits accessFlag_ = vk::AccessFlagBits::eHostRead;
+	vk::AccessFlags accessFlag_ = vk::AccessFlagBits::eHostRead;
 
 public:
 	bool Initialize(GraphicsVulkan* graphics, BufferUsageType usage, int32_t size);
@@ -39,7 +39,7 @@ public:
 
 	vk::Buffer GetBuffer() { return buffer_->buffer(); }
 
-	void ResourceBarrier(vk::CommandBuffer& commandBuffer, const vk::AccessFlagBits& accessFlag);
+	void ResourceBarrier(vk::CommandBuffer& commandBuffer, const vk::AccessFlags& accessFlag);
 };
 
 } // namespace LLGI

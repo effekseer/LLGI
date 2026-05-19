@@ -3,6 +3,36 @@
 
 namespace LLGI
 {
+namespace
+{
+vk::PipelineStageFlags GetPipelineStageFlags(vk::AccessFlags accessFlags)
+{
+	vk::PipelineStageFlags stageFlags = {};
+
+	if (accessFlags & (vk::AccessFlagBits::eHostRead | vk::AccessFlagBits::eHostWrite))
+	{
+		stageFlags |= vk::PipelineStageFlagBits::eHost;
+	}
+
+	if (accessFlags & (vk::AccessFlagBits::eTransferRead | vk::AccessFlagBits::eTransferWrite))
+	{
+		stageFlags |= vk::PipelineStageFlagBits::eTransfer;
+	}
+
+	if (accessFlags & (vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite))
+	{
+		stageFlags |= vk::PipelineStageFlagBits::eVertexShader | vk::PipelineStageFlagBits::eFragmentShader |
+					  vk::PipelineStageFlagBits::eComputeShader;
+	}
+
+	if (!stageFlags)
+	{
+		stageFlags = vk::PipelineStageFlagBits::eTopOfPipe;
+	}
+
+	return stageFlags;
+}
+} // namespace
 
 BufferVulkan::BufferVulkan() {}
 
@@ -126,22 +156,29 @@ void* BufferVulkan::Lock(int32_t offset, int32_t size)
 	return data;
 }
 
-void BufferVulkan::Unlock() { graphics_->GetDevice().unmapMemory(buffer_->devMem()); }
+void BufferVulkan::Unlock()
+{
+	graphics_->GetDevice().unmapMemory(buffer_->devMem());
+	if (BitwiseContains(usage_, BufferUsageType::MapWrite))
+	{
+		accessFlag_ = vk::AccessFlagBits::eHostWrite;
+	}
+}
 
 int32_t BufferVulkan::GetSize() { return size_; }
 
-void BufferVulkan::ResourceBarrier(vk::CommandBuffer& commandBuffer, const vk::AccessFlagBits& accessFlag)
+void BufferVulkan::ResourceBarrier(vk::CommandBuffer& commandBuffer, const vk::AccessFlags& accessFlag)
 {
-	if (accessFlag_ == accessFlag)
+	if (accessFlag_ == accessFlag && !(accessFlag & vk::AccessFlagBits::eShaderWrite))
 	{
 		return;
 	}
 
 	vk::BufferMemoryBarrier bufferBarrier(
-		accessFlag, accessFlag_, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, buffer_->buffer(), 0, VK_WHOLE_SIZE);
+		accessFlag_, accessFlag, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, buffer_->buffer(), 0, VK_WHOLE_SIZE);
 
-	vk::PipelineStageFlags stageFlags = vk::PipelineStageFlagBits::eComputeShader | vk::PipelineStageFlagBits::eVertexShader;
-	commandBuffer.pipelineBarrier(stageFlags, stageFlags, vk::DependencyFlags(), 0, nullptr, 0, &bufferBarrier, 0, nullptr);
+	commandBuffer.pipelineBarrier(
+		GetPipelineStageFlags(accessFlag_), GetPipelineStageFlags(accessFlag), vk::DependencyFlags(), 0, nullptr, 0, &bufferBarrier, 0, nullptr);
 
 	accessFlag_ = accessFlag;
 }
