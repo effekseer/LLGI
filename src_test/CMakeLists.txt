@@ -1,7 +1,7 @@
 if(BUILD_WEBGPU_BROWSER_TEST)
   set(files main.cpp TestHelper.cpp TestHelper.h test.h test_webgpu_browser.cpp)
 else()
-  file(GLOB files *.h *.cpp)
+  file(GLOB files CONFIGURE_DEPENDS *.h *.cpp)
   list(FILTER files EXCLUDE REGEX "test_webgpu_browser\\.cpp$")
 endif()
 

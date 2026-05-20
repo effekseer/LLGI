@@ -15,8 +15,7 @@ class ShaderDX12 : public Shader
 {
 private:
 	std::vector<uint8_t> data_;
-	std::array<bool, NumComputeBuffer> byteAddressSRVs_ = {};
-	std::array<bool, NumComputeBuffer> byteAddressUAVs_ = {};
+	std::vector<ShaderResourceBinding> resourceBindings_;
 
 public:
 	ShaderDX12() = default;
@@ -25,8 +24,7 @@ public:
 	bool Initialize(DataStructure* data, int32_t count);
 
 	const std::vector<uint8_t>& GetData() { return data_; }
-	const std::array<bool, NumComputeBuffer>& GetByteAddressSRVs() const { return byteAddressSRVs_; }
-	const std::array<bool, NumComputeBuffer>& GetByteAddressUAVs() const { return byteAddressUAVs_; }
+	const std::vector<ShaderResourceBinding>& GetResourceBindings() const { return resourceBindings_; }
 };
 
 } // namespace LLGI

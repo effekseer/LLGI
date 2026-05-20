@@ -51,12 +51,23 @@ bool PipelineStateDX12::Compile()
 			continue;
 		}
 
-		const auto& srvs = shaderDX12->GetByteAddressSRVs();
-		const auto& uavs = shaderDX12->GetByteAddressUAVs();
-		for (int32_t i = 0; i < NumComputeBuffer; i++)
+		for (const auto& binding : shaderDX12->GetResourceBindings())
 		{
-			byteAddressSRVs_[i] = byteAddressSRVs_[i] || srvs[i];
-			byteAddressUAVs_[i] = byteAddressUAVs_[i] || uavs[i];
+			if (binding.ResourceType != ShaderResourceType::StorageBuffer ||
+				binding.StorageBufferView != StorageBufferViewType::Raw ||
+				binding.Slot < 0 || binding.Slot >= NumStorageBuffer)
+			{
+				continue;
+			}
+
+			if (IsReadOnly(binding.Access))
+			{
+				byteAddressSRVs_[binding.Slot] = true;
+			}
+			else
+			{
+				byteAddressUAVs_[binding.Slot] = true;
+			}
 		}
 	}
 
@@ -95,7 +106,7 @@ bool PipelineStateDX12::CreateRootSignature()
 
 	// descriptor range for uav
 	ranges[2].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
-	ranges[2].NumDescriptors = NumComputeBuffer;
+	ranges[2].NumDescriptors = NumStorageBuffer;
 	ranges[2].BaseShaderRegister = 0;
 	ranges[2].RegisterSpace = 0;
 	ranges[2].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
@@ -172,7 +183,7 @@ bool PipelineStateDX12::CreateComputeRootSignature()
 
 	// descriptor range for uav
 	ranges[2].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
-	ranges[2].NumDescriptors = NumComputeBuffer;
+	ranges[2].NumDescriptors = NumStorageBuffer;
 	ranges[2].BaseShaderRegister = 0;
 	ranges[2].RegisterSpace = 0;
 	ranges[2].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;

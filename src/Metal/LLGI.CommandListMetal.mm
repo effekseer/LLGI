@@ -9,6 +9,7 @@
 
 #import <MetalKit/MetalKit.h>
 #include <TargetConditionals.h>
+#include <algorithm>
 
 namespace LLGI
 {
@@ -250,14 +251,14 @@ void CommandListMetal::Draw(int32_t primitiveCount, int32_t instanceCount)
 	
     const int compute_offset = 10;
     
-    for (int unit_ind = 0; unit_ind < NumComputeBuffer; unit_ind++)
+    for (int unit_ind = 0; unit_ind < NumStorageBuffer; unit_ind++)
     {
-        BindingComputeBuffer bcb;
-        GetCurrentComputeBuffer(unit_ind, bcb);
-        if (bcb.computeBuffer == nullptr)
+        BindingStorageBuffer bcb;
+        GetCurrentStorageBuffer(unit_ind, bcb);
+        if (bcb.storageBuffer == nullptr)
             continue;
 			
-        auto cb = static_cast<BufferMetal*>(bcb.computeBuffer);
+        auto cb = static_cast<BufferMetal*>(bcb.storageBuffer);
         [renderEncoder_ setVertexBuffer:cb->GetBuffer() offset:cb->GetOffset() atIndex:unit_ind + compute_offset];
         [renderEncoder_ setFragmentBuffer:cb->GetBuffer() offset:cb->GetOffset() atIndex:unit_ind + compute_offset];
     }
@@ -594,14 +595,14 @@ void CommandListMetal::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ, 
         [computeEncoder_ setSamplerState:samplerStates_[wm][mm][pm] atIndex:unit_ind];
     }
 
-    for (int unit_ind = 0; unit_ind < NumComputeBuffer; unit_ind++)
+    for (int unit_ind = 0; unit_ind < NumStorageBuffer; unit_ind++)
     {
-        BindingComputeBuffer bcb;
-        GetCurrentComputeBuffer(unit_ind, bcb);
-        if (bcb.computeBuffer == nullptr)
+        BindingStorageBuffer bcb;
+        GetCurrentStorageBuffer(unit_ind, bcb);
+        if (bcb.storageBuffer == nullptr)
             continue;
         
-        auto cb = static_cast<BufferMetal*>(bcb.computeBuffer);
+        auto cb = static_cast<BufferMetal*>(bcb.storageBuffer);
         [computeEncoder_ setBuffer:cb->GetBuffer() offset:cb->GetOffset() atIndex:compute_offset + unit_ind];
     }
     
@@ -617,17 +618,21 @@ void CommandListMetal::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ, 
 
 void CommandListMetal::CopyBuffer(Buffer* src, Buffer* dst)
 {
-    auto srcBuf = static_cast<BufferMetal*>(src);
-    auto srcGpuBuf = srcBuf->GetBuffer();
+	auto srcBuf = static_cast<BufferMetal*>(src);
+	auto srcGpuBuf = srcBuf->GetBuffer();
 
-    auto dstBuf = static_cast<BufferMetal*>(dst);
-    auto dstGpuBuf = dstBuf->GetBuffer();
+	auto dstBuf = static_cast<BufferMetal*>(dst);
+	auto dstGpuBuf = dstBuf->GetBuffer();
 
-    auto encoder = [commandBuffer_ blitCommandEncoder];
-    [encoder retain];
-    [encoder copyFromBuffer:srcGpuBuf sourceOffset:srcBuf->GetOffset() toBuffer:dstGpuBuf destinationOffset:dstBuf->GetOffset() size:srcBuf->GetSize()];
-    [encoder endEncoding];
-    [encoder release];
+	auto encoder = [commandBuffer_ blitCommandEncoder];
+	[encoder retain];
+	[encoder copyFromBuffer:srcGpuBuf
+			   sourceOffset:srcBuf->GetOffset()
+				   toBuffer:dstGpuBuf
+		  destinationOffset:dstBuf->GetOffset()
+					   size:std::min(srcBuf->GetSize(), dstBuf->GetSize())];
+	[encoder endEncoding];
+	[encoder release];
 
 	RegisterReferencedObject(src);
 	RegisterReferencedObject(dst);

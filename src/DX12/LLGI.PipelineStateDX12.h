@@ -26,8 +26,8 @@ private:
 	ID3DBlob* computeSignature_ = nullptr;
 	ID3D12RootSignature* rootSignature_ = nullptr;
 	ID3D12RootSignature* computeRootSignature_ = nullptr;
-	std::array<bool, NumComputeBuffer> byteAddressSRVs_ = {};
-	std::array<bool, NumComputeBuffer> byteAddressUAVs_ = {};
+	std::array<bool, NumStorageBuffer> byteAddressSRVs_ = {};
+	std::array<bool, NumStorageBuffer> byteAddressUAVs_ = {};
 
 	bool CreateRootSignature();
 	bool CreateComputeRootSignature();
@@ -49,8 +49,8 @@ public:
 	ID3D12PipelineState* GetComputePipelineState() { return computePipelineState_; }
 	ID3D12RootSignature* GetComputeRootSignature() { return computeRootSignature_; }
 
-	bool IsByteAddressSRV(int32_t unit) const { return unit >= 0 && unit < NumComputeBuffer && byteAddressSRVs_[unit]; }
-	bool IsByteAddressUAV(int32_t unit) const { return unit >= 0 && unit < NumComputeBuffer && byteAddressUAVs_[unit]; }
+	bool RequiresRawSRV(int32_t unit) const { return unit >= 0 && unit < NumStorageBuffer && byteAddressSRVs_[unit]; }
+	bool RequiresRawUAV(int32_t unit) const { return unit >= 0 && unit < NumStorageBuffer && byteAddressUAVs_[unit]; }
 };
 
 } // namespace LLGI

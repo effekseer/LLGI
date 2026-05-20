@@ -14,36 +14,31 @@ bool BuildBindGroupLayoutEntry(const ShaderBindingWebGPU& binding, wgpu::ShaderS
 	entry.binding = binding.Binding;
 	entry.visibility = visibility;
 
-	switch (binding.ResourceType)
+	switch (binding.Resource.ResourceType)
 	{
-	case ShaderBindingResourceTypeWebGPU::UniformBuffer:
+	case ShaderResourceType::UniformBuffer:
 		entry.buffer.type = wgpu::BufferBindingType::Uniform;
 		entry.buffer.hasDynamicOffset = false;
 		entry.buffer.minBindingSize = 0;
 		return true;
-	case ShaderBindingResourceTypeWebGPU::StorageBuffer:
-		entry.buffer.type = wgpu::BufferBindingType::Storage;
+	case ShaderResourceType::StorageBuffer:
+		entry.buffer.type = IsReadOnly(binding.Resource.Access) ? wgpu::BufferBindingType::ReadOnlyStorage : wgpu::BufferBindingType::Storage;
 		entry.buffer.hasDynamicOffset = false;
 		entry.buffer.minBindingSize = 0;
 		return true;
-	case ShaderBindingResourceTypeWebGPU::ReadOnlyStorageBuffer:
-		entry.buffer.type = wgpu::BufferBindingType::ReadOnlyStorage;
-		entry.buffer.hasDynamicOffset = false;
-		entry.buffer.minBindingSize = 0;
-		return true;
-	case ShaderBindingResourceTypeWebGPU::Texture:
+	case ShaderResourceType::Texture:
 		entry.texture.sampleType = binding.TextureSampleType;
 		entry.texture.viewDimension = binding.TextureViewDimension;
 		entry.texture.multisampled = false;
 		return true;
-	case ShaderBindingResourceTypeWebGPU::StorageTexture:
+	case ShaderResourceType::StorageTexture:
 		entry.storageTexture.access =
 			binding.StorageTextureAccess != wgpu::StorageTextureAccess::Undefined ? binding.StorageTextureAccess : wgpu::StorageTextureAccess::WriteOnly;
 		entry.storageTexture.format =
 			binding.StorageTextureFormat != wgpu::TextureFormat::Undefined ? binding.StorageTextureFormat : wgpu::TextureFormat::RGBA32Float;
 		entry.storageTexture.viewDimension = binding.TextureViewDimension;
 		return true;
-	case ShaderBindingResourceTypeWebGPU::Sampler:
+	case ShaderResourceType::Sampler:
 		entry.sampler.type = wgpu::SamplerBindingType::Filtering;
 		return true;
 	default:
@@ -55,25 +50,27 @@ bool ContainsBinding(const std::vector<ShaderBindingWebGPU>& bindings, const Sha
 {
 	for (const auto& existingBinding : bindings)
 	{
-		if (existingBinding.Group != binding.Group || existingBinding.Binding != binding.Binding || existingBinding.ResourceType != binding.ResourceType)
+		if (existingBinding.Group != binding.Group || existingBinding.Binding != binding.Binding ||
+			existingBinding.Resource.ResourceType != binding.Resource.ResourceType ||
+			existingBinding.Resource.Access != binding.Resource.Access)
 		{
 			continue;
 		}
 
-		if ((binding.ResourceType == ShaderBindingResourceTypeWebGPU::Texture ||
-			 binding.ResourceType == ShaderBindingResourceTypeWebGPU::StorageTexture) &&
+		if ((binding.Resource.ResourceType == ShaderResourceType::Texture ||
+			 binding.Resource.ResourceType == ShaderResourceType::StorageTexture) &&
 			existingBinding.TextureViewDimension != binding.TextureViewDimension)
 		{
 			continue;
 		}
 
-		if (binding.ResourceType == ShaderBindingResourceTypeWebGPU::Texture &&
+		if (binding.Resource.ResourceType == ShaderResourceType::Texture &&
 			existingBinding.TextureSampleType != binding.TextureSampleType)
 		{
 			continue;
 		}
 
-		if (binding.ResourceType == ShaderBindingResourceTypeWebGPU::StorageTexture &&
+		if (binding.Resource.ResourceType == ShaderResourceType::StorageTexture &&
 			(existingBinding.StorageTextureFormat != binding.StorageTextureFormat ||
 			 existingBinding.StorageTextureAccess != binding.StorageTextureAccess))
 		{
@@ -158,7 +155,12 @@ bool PipelineStateWebGPU::HasBinding(uint32_t group, uint32_t binding) const
 	return false;
 }
 
-bool PipelineStateWebGPU::HasBinding(uint32_t group, uint32_t binding, ShaderBindingResourceTypeWebGPU resourceType) const
+bool PipelineStateWebGPU::HasBinding(uint32_t group, uint32_t binding, ShaderResourceType resourceType) const
+{
+	return HasBinding(group, binding, resourceType, ShaderResourceAccess::ReadOnly);
+}
+
+bool PipelineStateWebGPU::HasBinding(uint32_t group, uint32_t binding, ShaderResourceType resourceType, ShaderResourceAccess access) const
 {
 	if (!hasBindingReflection_)
 	{
@@ -167,11 +169,11 @@ bool PipelineStateWebGPU::HasBinding(uint32_t group, uint32_t binding, ShaderBin
 
 	for (const auto& b : bindings_)
 	{
-		const bool isCompatibleStorageBuffer =
-			resourceType == ShaderBindingResourceTypeWebGPU::StorageBuffer &&
-			b.ResourceType == ShaderBindingResourceTypeWebGPU::ReadOnlyStorageBuffer;
-		if (b.Group == group && b.Binding == binding &&
-			(b.ResourceType == resourceType || b.ResourceType == ShaderBindingResourceTypeWebGPU::Unknown || isCompatibleStorageBuffer))
+		const bool resourceTypeMatches = b.Resource.ResourceType == resourceType || b.Resource.ResourceType == ShaderResourceType::Unknown;
+		const bool accessMatches = b.Resource.ResourceType == ShaderResourceType::Unknown ||
+								   resourceType != ShaderResourceType::StorageBuffer ||
+								   IsReadOnly(b.Resource.Access) == IsReadOnly(access);
+		if (b.Group == group && b.Binding == binding && resourceTypeMatches && accessMatches)
 		{
 			return true;
 		}

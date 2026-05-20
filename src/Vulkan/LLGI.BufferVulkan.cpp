@@ -32,6 +32,23 @@ vk::PipelineStageFlags GetPipelineStageFlags(vk::AccessFlags accessFlags)
 
 	return stageFlags;
 }
+
+vk::AccessFlags ToAccessFlags(BufferVulkanAccess access)
+{
+	switch (access)
+	{
+	case BufferVulkanAccess::TransferRead:
+		return vk::AccessFlagBits::eTransferRead;
+	case BufferVulkanAccess::TransferWrite:
+		return vk::AccessFlagBits::eTransferWrite;
+	case BufferVulkanAccess::ShaderRead:
+		return vk::AccessFlagBits::eShaderRead;
+	case BufferVulkanAccess::ShaderReadWrite:
+		return vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite;
+	}
+
+	return {};
+}
 } // namespace
 
 BufferVulkan::BufferVulkan() {}
@@ -87,7 +104,7 @@ bool BufferVulkan::Initialize(GraphicsVulkan* graphics, BufferUsageType usage, i
 		vkUsage |= vk::BufferUsageFlagBits::eVertexBuffer;
 	}
 
-	if (BitwiseContains(usage, BufferUsageType::ComputeRead) || BitwiseContains(usage, BufferUsageType::ComputeWrite))
+	if (BitwiseContains(usage, BufferUsageType::StorageRead) || BitwiseContains(usage, BufferUsageType::StorageWrite))
 	{
 		vkUsage |= vk::BufferUsageFlagBits::eStorageBuffer;
 	}
@@ -99,10 +116,10 @@ bool BufferVulkan::Initialize(GraphicsVulkan* graphics, BufferUsageType usage, i
 	}
 
 	{
-		vk::BufferCreateInfo ComputeBufferInfo;
-		ComputeBufferInfo.size = actualSize_;
-		ComputeBufferInfo.usage = vkUsage;
-		vk::Buffer buffer = graphics_->GetDevice().createBuffer(ComputeBufferInfo);
+		vk::BufferCreateInfo storageBufferInfo;
+		storageBufferInfo.size = actualSize_;
+		storageBufferInfo.usage = vkUsage;
+		vk::Buffer buffer = graphics_->GetDevice().createBuffer(storageBufferInfo);
 
 		vk::MemoryRequirements memReqs = graphics_->GetDevice().getBufferMemoryRequirements(buffer);
 		vk::MemoryAllocateInfo memAlloc;
@@ -167,8 +184,9 @@ void BufferVulkan::Unlock()
 
 int32_t BufferVulkan::GetSize() { return size_; }
 
-void BufferVulkan::ResourceBarrier(vk::CommandBuffer& commandBuffer, const vk::AccessFlags& accessFlag)
+void BufferVulkan::ResourceBarrier(vk::CommandBuffer& commandBuffer, BufferVulkanAccess access)
 {
+	const auto accessFlag = ToAccessFlags(access);
 	if (accessFlag_ == accessFlag && !(accessFlag & vk::AccessFlagBits::eShaderWrite))
 	{
 		return;

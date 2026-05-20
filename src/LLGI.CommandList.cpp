@@ -25,7 +25,7 @@ void CommandList::GetCurrentPipelineState(PipelineState*& pipelineState, bool& i
 	isDirtied = isPipelineDirtied;
 }
 
-void CommandList::GetCurrentComputeBuffer(int32_t unit, BindingComputeBuffer& buffer) { buffer = computeBuffers_[unit]; }
+void CommandList::GetCurrentStorageBuffer(int32_t unit, BindingStorageBuffer& buffer) { buffer = storageBuffers_[unit]; }
 
 void CommandList::RegisterReferencedObject(ReferenceObject* referencedObject)
 {
@@ -41,9 +41,9 @@ CommandList::CommandList(int32_t swapCount) : swapCount_(swapCount)
 {
 	constantBuffers_.fill(nullptr);
 
-	for (auto& cbs : computeBuffers_)
+	for (auto& cbs : storageBuffers_)
 	{
-		cbs.computeBuffer = nullptr;
+		cbs.storageBuffer = nullptr;
 	}
 
 	for (auto& t : currentTextures_)
@@ -75,9 +75,9 @@ CommandList::~CommandList()
 		so.referencedObjects.clear();
 	}
 
-	for (auto& cb : computeBuffers_)
+	for (auto& cb : storageBuffers_)
 	{
-		SafeRelease(cb.computeBuffer);
+		SafeRelease(cb.storageBuffer);
 	}
 }
 
@@ -90,7 +90,7 @@ void CommandList::Begin()
 	isCurrentIndexBufferDirtied = true;
 	isPipelineDirtied = true;
 	ResetTextures();
-	ResetComputeBuffer();
+	ResetStorageBuffers();
 
 	swapIndex_ = (swapIndex_ + 1) % swapCount_;
 
@@ -112,7 +112,7 @@ bool CommandList::BeginWithPlatform(void* platformContextPtr)
 	isCurrentIndexBufferDirtied = true;
 	isPipelineDirtied = true;
 	ResetTextures();
-	ResetComputeBuffer();
+	ResetStorageBuffers();
 
 	swapIndex_ = (swapIndex_ + 1) % swapCount_;
 
@@ -198,12 +198,33 @@ void CommandList::SetConstantBuffer(Buffer* constantBuffer, int32_t unit)
 	RegisterReferencedObject(constantBuffer);
 }
 
-void CommandList::SetComputeBuffer(Buffer* computeBuffer, int32_t stride, int32_t unit, bool is_readonly)
+void CommandList::SetStorageBuffer(
+	Buffer* storageBuffer, int32_t stride, int32_t unit, ShaderResourceAccess access, StorageBufferViewType viewType)
 {
-	SafeAssign(computeBuffers_[unit].computeBuffer, computeBuffer);
-	computeBuffers_[unit].stride = stride;
-	computeBuffers_[unit].is_read_only = is_readonly;
-	RegisterReferencedObject(computeBuffer);
+	ShaderResourceBinding binding;
+	binding.ResourceType = ShaderResourceType::StorageBuffer;
+	binding.Access = access;
+	binding.StorageBufferView = viewType;
+	binding.Slot = unit;
+	binding.ElementStride = stride;
+	SetStorageBuffer(storageBuffer, binding);
+}
+
+void CommandList::SetStorageBuffer(Buffer* storageBuffer, const ShaderResourceBinding& binding)
+{
+	if (binding.Slot < 0 || binding.Slot >= NumStorageBuffer)
+	{
+		Log(LogType::Error, "Storage buffer slot is out of range.");
+		return;
+	}
+
+	auto normalizedBinding = binding;
+	normalizedBinding.ResourceType = ShaderResourceType::StorageBuffer;
+
+	auto& storageBinding = storageBuffers_[binding.Slot];
+	SafeAssign(storageBinding.storageBuffer, storageBuffer);
+	storageBinding.binding = normalizedBinding;
+	RegisterReferencedObject(storageBuffer);
 }
 
 void CommandList::SetTexture(Texture* texture, TextureWrapMode wrapMode, TextureMinMagFilter minmagFilter, int32_t unit)
@@ -247,12 +268,12 @@ void CommandList::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ, int32
 	isPipelineDirtied = false;
 }
 
-void CommandList::ResetComputeBuffer()
+void CommandList::ResetStorageBuffers()
 {
-	for (auto& cb : computeBuffers_)
+	for (auto& cb : storageBuffers_)
 	{
-		SafeRelease(cb.computeBuffer);
-		cb.stride = 0;
+		SafeRelease(cb.storageBuffer);
+		cb.binding = ShaderResourceBinding();
 	}
 }
 

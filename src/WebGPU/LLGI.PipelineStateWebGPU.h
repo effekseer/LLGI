@@ -33,7 +33,8 @@ public:
 	wgpu::RenderPipeline GetRenderPipeline() { return renderPipeline_; }
 	wgpu::ComputePipeline GetComputePipeline() { return computePipeline_; }
 	bool HasBinding(uint32_t group, uint32_t binding) const;
-	bool HasBinding(uint32_t group, uint32_t binding, ShaderBindingResourceTypeWebGPU resourceType) const;
+	bool HasBinding(uint32_t group, uint32_t binding, ShaderResourceType resourceType) const;
+	bool HasBinding(uint32_t group, uint32_t binding, ShaderResourceType resourceType, ShaderResourceAccess access) const;
 };
 
 } // namespace LLGI

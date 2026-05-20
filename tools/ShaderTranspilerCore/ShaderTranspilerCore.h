@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#include "../../src/LLGI.Base.h"
+#include "../../src/LLGI.Shader.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -113,6 +113,8 @@ public:
 	std::vector<ShaderReflectionUniform> Uniforms;
 
 	std::vector<ShaderReflectionTexture> Textures;
+
+	std::vector<ShaderResourceBinding> ResourceBindings;
 
 	Vec3I NumThreads;
 };

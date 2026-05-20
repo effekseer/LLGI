@@ -304,9 +304,9 @@ void test_webgpu_browser_compute_dispatch(LLGI::DeviceType deviceType)
 	auto uploadBuffer = LLGI::CreateSharedPtr(
 		graphics->CreateBuffer(LLGI::BufferUsageType::MapWrite | LLGI::BufferUsageType::CopySrc, sizeof(BrowserComputeInput) * dataSize));
 	auto inputBuffer = LLGI::CreateSharedPtr(
-		graphics->CreateBuffer(LLGI::BufferUsageType::ComputeWrite | LLGI::BufferUsageType::CopyDst, sizeof(BrowserComputeInput) * dataSize));
+		graphics->CreateBuffer(LLGI::BufferUsageType::StorageWrite | LLGI::BufferUsageType::CopyDst, sizeof(BrowserComputeInput) * dataSize));
 	auto outputBuffer = LLGI::CreateSharedPtr(
-		graphics->CreateBuffer(LLGI::BufferUsageType::ComputeWrite | LLGI::BufferUsageType::CopySrc, sizeof(BrowserComputeOutput) * dataSize));
+		graphics->CreateBuffer(LLGI::BufferUsageType::StorageWrite | LLGI::BufferUsageType::CopySrc, sizeof(BrowserComputeOutput) * dataSize));
 	auto readbackTarget = LLGI::CreateSharedPtr(
 		graphics->CreateBuffer(LLGI::BufferUsageType::MapRead | LLGI::BufferUsageType::CopyDst, sizeof(BrowserComputeOutput) * dataSize));
 	auto constantBuffer = LLGI::CreateSharedPtr(
@@ -342,8 +342,8 @@ void test_webgpu_browser_compute_dispatch(LLGI::DeviceType deviceType)
 	commandList->CopyBuffer(uploadBuffer.get(), inputBuffer.get());
 	commandList->BeginComputePass();
 	commandList->SetPipelineState(pipelineState.get());
-	commandList->SetComputeBuffer(inputBuffer.get(), sizeof(BrowserComputeInput), 0, false);
-	commandList->SetComputeBuffer(outputBuffer.get(), sizeof(BrowserComputeOutput), 1, false);
+	commandList->SetStorageBuffer(inputBuffer.get(), sizeof(BrowserComputeInput), 0, LLGI::ShaderResourceAccess::ReadWrite);
+	commandList->SetStorageBuffer(outputBuffer.get(), sizeof(BrowserComputeOutput), 1, LLGI::ShaderResourceAccess::ReadWrite);
 	commandList->SetConstantBuffer(constantBuffer.get(), 0);
 	commandList->Dispatch(dataSize, 1, 1, 1, 1, 1);
 	commandList->EndComputePass();

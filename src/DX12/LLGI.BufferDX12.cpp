@@ -37,12 +37,12 @@ bool BufferDX12::Initialize(GraphicsDX12* graphics, const BufferUsageType usage,
 		heapType = D3D12_HEAP_TYPE_READBACK;
 	}
 
-	if (BitwiseContains(usage, BufferUsageType::CopySrc) && !BitwiseContains(usage, BufferUsageType::ComputeWrite))
+	if (BitwiseContains(usage, BufferUsageType::CopySrc) && !BitwiseContains(usage, BufferUsageType::StorageWrite))
 	{
 		state_ |= D3D12_RESOURCE_STATE_COPY_SOURCE;
 	}
 
-	if (BitwiseContains(usage, BufferUsageType::CopyDst) && !BitwiseContains(usage, BufferUsageType::ComputeWrite))
+	if (BitwiseContains(usage, BufferUsageType::CopyDst) && !BitwiseContains(usage, BufferUsageType::StorageWrite))
 	{
 		state_ |= D3D12_RESOURCE_STATE_COPY_DEST;
 	}
@@ -57,12 +57,12 @@ bool BufferDX12::Initialize(GraphicsDX12* graphics, const BufferUsageType usage,
 		state_ |= D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
 	}
 
-	if (BitwiseContains(usage, BufferUsageType::ComputeWrite))
+	if (BitwiseContains(usage, BufferUsageType::StorageWrite))
 	{
 		flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 	}
 
-	if (BitwiseContains(usage, BufferUsageType::ComputeRead) && !BitwiseContains(usage, BufferUsageType::ComputeWrite) &&
+	if (BitwiseContains(usage, BufferUsageType::StorageRead) && !BitwiseContains(usage, BufferUsageType::StorageWrite) &&
 		!BitwiseContains(usage, BufferUsageType::CopyDst))
 	{
 		state_ |= D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
@@ -132,5 +132,39 @@ int32_t BufferDX12::GetSize() { return size_; }
 int32_t BufferDX12::GetActualSize() const { return actualSize_; }
 
 int32_t BufferDX12::GetOffset() const { return offset_; }
+
+bool BufferDX12::ResourceBarrier(ID3D12GraphicsCommandList* commandList, D3D12_RESOURCE_STATES state)
+{
+	if (commandList == nullptr || state_ == state ||
+		(state != D3D12_RESOURCE_STATE_COMMON && BitwiseContains(state_, state)))
+	{
+		return false;
+	}
+
+	D3D12_RESOURCE_BARRIER barrier = {};
+	barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+	barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+	barrier.Transition.pResource = buffer_;
+	barrier.Transition.StateBefore = state_;
+	barrier.Transition.StateAfter = state;
+	barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+	commandList->ResourceBarrier(1, &barrier);
+
+	state_ = state;
+	return true;
+}
+
+void BufferDX12::UAVBarrier(ID3D12GraphicsCommandList* commandList)
+{
+	if (commandList == nullptr)
+	{
+		return;
+	}
+
+	D3D12_RESOURCE_BARRIER barrier = {};
+	barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+	barrier.UAV.pResource = buffer_;
+	commandList->ResourceBarrier(1, &barrier);
+}
 
 } // namespace LLGI

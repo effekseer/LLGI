@@ -4,6 +4,7 @@
 #include "LLGI.PipelineStateVulkan.h"
 #include "LLGI.TextureVulkan.h"
 #include "LLGI.QueryVulkan.h"
+#include <algorithm>
 
 namespace LLGI
 {
@@ -157,21 +158,21 @@ void CommandListVulkan::AssignConstantBuffersToCommandList(const vk::DescriptorS
 	}
 }
 
-void CommandListVulkan::AssignComputeBuffersToCommandList(const vk::DescriptorSet& descriptorSet,
+void CommandListVulkan::AssignStorageBuffersToCommandList(const vk::DescriptorSet& descriptorSet,
 														  vk::WriteDescriptorSet* descriptorSets,
 														  int& descriptorSetOffset,
 														  vk::DescriptorBufferInfo* descBuffers,
 														  int& descBufferOffset)
 {
-	for (int unit_ind = 0; unit_ind < NumComputeBuffer; unit_ind++)
+	for (int unit_ind = 0; unit_ind < NumStorageBuffer; unit_ind++)
 	{
-		BindingComputeBuffer cb_;
-		GetCurrentComputeBuffer(unit_ind, cb_);
+		BindingStorageBuffer cb_;
+		GetCurrentStorageBuffer(unit_ind, cb_);
 
-		if (cb_.computeBuffer == nullptr)
+		if (cb_.storageBuffer == nullptr)
 			continue;
 
-		auto cb = static_cast<BufferVulkan*>(cb_.computeBuffer);
+		auto cb = static_cast<BufferVulkan*>(cb_.storageBuffer);
 
 		descBuffers[descBufferOffset].buffer = cb->GetBuffer();
 		descBuffers[descBufferOffset].offset = cb->GetOffset();
@@ -241,18 +242,18 @@ void CommandListVulkan::AssignTexturesToCommandList(const vk::DescriptorSet& des
 	}
 }
 
-void CommandListVulkan::PrepareComputeBuffersForGraphics()
+void CommandListVulkan::PrepareStorageBuffersForGraphics()
 {
-	for (int unit_ind = 0; unit_ind < NumComputeBuffer; unit_ind++)
+	for (int unit_ind = 0; unit_ind < NumStorageBuffer; unit_ind++)
 	{
-		BindingComputeBuffer cb_;
-		GetCurrentComputeBuffer(unit_ind, cb_);
+		BindingStorageBuffer cb_;
+		GetCurrentStorageBuffer(unit_ind, cb_);
 
-		if (cb_.computeBuffer == nullptr)
+		if (cb_.storageBuffer == nullptr)
 			continue;
 
-		auto cb = static_cast<BufferVulkan*>(cb_.computeBuffer);
-		cb->ResourceBarrier(currentCommandBuffer_, vk::AccessFlagBits::eShaderRead);
+		auto cb = static_cast<BufferVulkan*>(cb_.storageBuffer);
+		cb->ResourceBarrier(currentCommandBuffer_, BufferVulkanAccess::ShaderRead);
 	}
 }
 
@@ -499,10 +500,10 @@ void CommandListVulkan::Draw(int32_t primitiveCount, int32_t instanceCount)
 		return;
 	}
 
-	std::array<vk::WriteDescriptorSet, NumComputeBuffer + NumTexture + NumConstantBuffer> writeDescriptorSets;
+	std::array<vk::WriteDescriptorSet, NumStorageBuffer + NumTexture + NumConstantBuffer> writeDescriptorSets;
 	int writeDescriptorIndex = 0;
 
-	std::array<vk::DescriptorBufferInfo, NumComputeBuffer + NumTexture + NumConstantBuffer> descriptorBufferInfos;
+	std::array<vk::DescriptorBufferInfo, NumStorageBuffer + NumTexture + NumConstantBuffer> descriptorBufferInfos;
 	int descriptorBufferIndex = 0;
 
 	std::array<vk::DescriptorImageInfo, NumTexture> descriptorImageInfos;
@@ -518,7 +519,7 @@ void CommandListVulkan::Draw(int32_t primitiveCount, int32_t instanceCount)
 								descriptorImageIndex,
 								[](TextureUsageType t) -> bool { return true; });
 
-	AssignComputeBuffersToCommandList(
+	AssignStorageBuffersToCommandList(
 		descriptorSets[2], writeDescriptorSets.data(), writeDescriptorIndex, descriptorBufferInfos.data(), descriptorBufferIndex);
 
 	if (writeDescriptorIndex > 0)
@@ -668,12 +669,12 @@ void CommandListVulkan::CopyBuffer(Buffer* src, Buffer* dst)
 	vk::BufferCopy copyRegion;
 	copyRegion.srcOffset = srcBuf->GetOffset();
 	copyRegion.dstOffset = dstBuf->GetOffset();
-	copyRegion.size = srcBuf->GetSize();
+	copyRegion.size = std::min(srcBuf->GetSize(), dstBuf->GetSize());
 
-	srcBuf->ResourceBarrier(currentCommandBuffer_, vk::AccessFlagBits::eTransferRead);
-	dstBuf->ResourceBarrier(currentCommandBuffer_, vk::AccessFlagBits::eTransferWrite);
+	srcBuf->ResourceBarrier(currentCommandBuffer_, BufferVulkanAccess::TransferRead);
+	dstBuf->ResourceBarrier(currentCommandBuffer_, BufferVulkanAccess::TransferWrite);
 	currentCommandBuffer_.copyBuffer(srcGpuBuf, dstGpuBuf, copyRegion);
-	dstBuf->ResourceBarrier(currentCommandBuffer_, vk::AccessFlagBits::eTransferRead);
+	dstBuf->ResourceBarrier(currentCommandBuffer_, BufferVulkanAccess::TransferRead);
 
 	RegisterReferencedObject(src);
 	RegisterReferencedObject(dst);
@@ -688,7 +689,7 @@ void CommandListVulkan::BeginRenderPass(RenderPass* renderPass)
 		return;
 	}
 
-	PrepareComputeBuffersForGraphics();
+		PrepareStorageBuffersForGraphics();
 
 	vk::ClearColorValue clearColor(std::array<float, 4>{renderPass_->GetClearColor().R / 255.0f,
 														renderPass_->GetClearColor().G / 255.0f,
@@ -870,10 +871,10 @@ void CommandListVulkan::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ,
 		return;
 	}
 
-	std::array<vk::WriteDescriptorSet, NumConstantBuffer + NumTexture * 2 + NumComputeBuffer> writeDescriptorSets;
+	std::array<vk::WriteDescriptorSet, NumConstantBuffer + NumTexture * 2 + NumStorageBuffer> writeDescriptorSets;
 	int writeDescriptorIndex = 0;
 
-	std::array<vk::DescriptorBufferInfo, NumConstantBuffer + NumTexture * 2 + NumComputeBuffer> descriptorBufferInfos;
+	std::array<vk::DescriptorBufferInfo, NumConstantBuffer + NumTexture * 2 + NumStorageBuffer> descriptorBufferInfos;
 	int descriptorBufferIndex = 0;
 
 	std::array<vk::DescriptorImageInfo, NumTexture> descriptorImageInfos;
@@ -924,23 +925,21 @@ void CommandListVulkan::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ,
 		writeDescriptorIndex++;
 	}
 
-	AssignComputeBuffersToCommandList(
+	AssignStorageBuffersToCommandList(
 		descriptorSets[2], writeDescriptorSets.data(), writeDescriptorIndex, descriptorBufferInfos.data(), descriptorBufferIndex);
 
-	// Assign compute buffers
-	for (int unit_ind = 0; unit_ind < NumComputeBuffer; unit_ind++)
+	// Assign storage buffers
+	for (int unit_ind = 0; unit_ind < NumStorageBuffer; unit_ind++)
 	{
-		BindingComputeBuffer cb_;
-		GetCurrentComputeBuffer(unit_ind, cb_);
+		BindingStorageBuffer cb_;
+		GetCurrentStorageBuffer(unit_ind, cb_);
 
-		if (cb_.computeBuffer == nullptr)
+		if (cb_.storageBuffer == nullptr)
 			continue;
 
-		auto cb = static_cast<BufferVulkan*>(cb_.computeBuffer);
-		const vk::AccessFlags accessFlags = cb_.is_read_only
-												? vk::AccessFlags(vk::AccessFlagBits::eShaderRead)
-												: vk::AccessFlags(vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite);
-		cb->ResourceBarrier(currentCommandBuffer_, accessFlags);
+		auto cb = static_cast<BufferVulkan*>(cb_.storageBuffer);
+		cb->ResourceBarrier(
+			currentCommandBuffer_, IsReadOnly(cb_.binding.Access) ? BufferVulkanAccess::ShaderRead : BufferVulkanAccess::ShaderReadWrite);
 	}
 
 	if (writeDescriptorIndex > 0)

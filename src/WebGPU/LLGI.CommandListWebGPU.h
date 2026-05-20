@@ -45,6 +45,7 @@ class CommandListWebGPU : public CommandList
 		uint32_t index, const void* pipeline, const std::vector<BindGroupEntryKey>& entries, const wgpu::BindGroupDescriptor& desc);
 	void SetComputeBindGroup(
 		uint32_t index, const void* pipeline, const std::vector<BindGroupEntryKey>& entries, const wgpu::BindGroupDescriptor& desc);
+	bool PrepareStandaloneCommand(const char* commandName);
 
 public:
 	CommandListWebGPU(wgpu::Device device);

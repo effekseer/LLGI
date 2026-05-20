@@ -19,6 +19,7 @@ bool ShaderDX12::Initialize(DataStructure* data, int32_t count)
 	auto p = static_cast<const uint8_t*>(data->Data);
 	data_.resize(data->Size);
 	memcpy(data_.data(), p, data_.size());
+	resourceBindings_.clear();
 
 	ID3D12ShaderReflection* reflection = nullptr;
 	auto hr = D3DReflect(data_.data(), data_.size(), IID_PPV_ARGS(&reflection));
@@ -35,18 +36,19 @@ bool ShaderDX12::Initialize(DataStructure* data, int32_t count)
 					continue;
 				}
 
-				if (bindDesc.BindPoint >= NumComputeBuffer)
+				if (bindDesc.BindPoint >= NumStorageBuffer)
 				{
 					continue;
 				}
 
-				if (bindDesc.Type == D3D_SIT_BYTEADDRESS)
+				if (bindDesc.Type == D3D_SIT_BYTEADDRESS || bindDesc.Type == D3D_SIT_UAV_RWBYTEADDRESS)
 				{
-					byteAddressSRVs_[bindDesc.BindPoint] = true;
-				}
-				else if (bindDesc.Type == D3D_SIT_UAV_RWBYTEADDRESS)
-				{
-					byteAddressUAVs_[bindDesc.BindPoint] = true;
+					ShaderResourceBinding binding;
+					binding.ResourceType = ShaderResourceType::StorageBuffer;
+					binding.Access = bindDesc.Type == D3D_SIT_BYTEADDRESS ? ShaderResourceAccess::ReadOnly : ShaderResourceAccess::ReadWrite;
+					binding.StorageBufferView = StorageBufferViewType::Raw;
+					binding.Slot = static_cast<int32_t>(bindDesc.BindPoint);
+					resourceBindings_.push_back(binding);
 				}
 			}
 		}

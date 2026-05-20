@@ -54,7 +54,7 @@ private:
 											vk::DescriptorBufferInfo* descBuffers,
 											int& descBufferOffset);
 
-	void AssignComputeBuffersToCommandList(const vk::DescriptorSet& descriptorSet,
+	void AssignStorageBuffersToCommandList(const vk::DescriptorSet& descriptorSet,
 											vk::WriteDescriptorSet* descriptorSets,
 											int& descriptorSetOffset,
 											vk::DescriptorBufferInfo* descBuffers,
@@ -67,7 +67,7 @@ private:
 									 int& descImageOffset,
 									 const std::function<bool(TextureUsageType)>& filter);
 
-	void PrepareComputeBuffersForGraphics();
+	void PrepareStorageBuffersForGraphics();
 
 public:
 	CommandListVulkan() = default;

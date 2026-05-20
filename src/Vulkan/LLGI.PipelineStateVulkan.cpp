@@ -1,4 +1,5 @@
 #include "LLGI.PipelineStateVulkan.h"
+#include "../LLGI.CommandList.h"
 #include "LLGI.ShaderVulkan.h"
 
 // for x11
@@ -466,16 +467,16 @@ bool PipelineStateVulkan::CreateGraphicsPipeline()
 		textureLayoutBindings[i].pImmutableSamplers = nullptr;
 	}
 
-	// compute buffer info(readonly)
-	std::array<vk::DescriptorSetLayoutBinding, 8> computeLayoutBindings;
+	// storage buffer info(readonly)
+	std::array<vk::DescriptorSetLayoutBinding, NumStorageBuffer> storageLayoutBindings;
 
-	for (size_t i = 0; i < computeLayoutBindings.size(); i++)
+	for (size_t i = 0; i < storageLayoutBindings.size(); i++)
 	{
-		computeLayoutBindings[i].binding = static_cast<uint32_t>(i);
-		computeLayoutBindings[i].descriptorType = vk::DescriptorType::eStorageBufferDynamic;
-		computeLayoutBindings[i].descriptorCount = 1;
-		computeLayoutBindings[i].stageFlags = stageFlag;
-		computeLayoutBindings[i].pImmutableSamplers = nullptr;
+		storageLayoutBindings[i].binding = static_cast<uint32_t>(i);
+		storageLayoutBindings[i].descriptorType = vk::DescriptorType::eStorageBufferDynamic;
+		storageLayoutBindings[i].descriptorCount = 1;
+		storageLayoutBindings[i].stageFlags = stageFlag;
+		storageLayoutBindings[i].pImmutableSamplers = nullptr;
 	}
 
 	vk::DescriptorSetLayoutCreateInfo descriptorSetLayoutInfos[3];
@@ -483,8 +484,8 @@ bool PipelineStateVulkan::CreateGraphicsPipeline()
 	descriptorSetLayoutInfos[0].pBindings = uboLayoutBindings.data();
 	descriptorSetLayoutInfos[1].bindingCount = static_cast<int32_t>(textureLayoutBindings.size());
 	descriptorSetLayoutInfos[1].pBindings = textureLayoutBindings.data();
-	descriptorSetLayoutInfos[2].bindingCount = static_cast<int32_t>(computeLayoutBindings.size());
-	descriptorSetLayoutInfos[2].pBindings = computeLayoutBindings.data();
+	descriptorSetLayoutInfos[2].bindingCount = static_cast<int32_t>(storageLayoutBindings.size());
+	descriptorSetLayoutInfos[2].pBindings = storageLayoutBindings.data();
 
 	descriptorSetLayouts_[0] = graphics_->GetDevice().createDescriptorSetLayout(descriptorSetLayoutInfos[0]);
 	descriptorSetLayouts_[1] = graphics_->GetDevice().createDescriptorSetLayout(descriptorSetLayoutInfos[1]);

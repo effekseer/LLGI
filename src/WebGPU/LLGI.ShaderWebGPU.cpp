@@ -132,24 +132,26 @@ wgpu::TextureViewDimension ParseTextureViewDimension(const std::string& statemen
 
 bool IsSameBinding(const ShaderBindingWebGPU& lhs, const ShaderBindingWebGPU& rhs)
 {
-	if (lhs.Group != rhs.Group || lhs.Binding != rhs.Binding || lhs.ResourceType != rhs.ResourceType)
+	if (lhs.Group != rhs.Group || lhs.Binding != rhs.Binding ||
+		lhs.Resource.ResourceType != rhs.Resource.ResourceType ||
+		lhs.Resource.Access != rhs.Resource.Access)
 	{
 		return false;
 	}
 
-	if ((lhs.ResourceType == ShaderBindingResourceTypeWebGPU::Texture ||
-		 lhs.ResourceType == ShaderBindingResourceTypeWebGPU::StorageTexture) &&
+	if ((lhs.Resource.ResourceType == ShaderResourceType::Texture ||
+		 lhs.Resource.ResourceType == ShaderResourceType::StorageTexture) &&
 		lhs.TextureViewDimension != rhs.TextureViewDimension)
 	{
 		return false;
 	}
 
-	if (lhs.ResourceType == ShaderBindingResourceTypeWebGPU::Texture)
+	if (lhs.Resource.ResourceType == ShaderResourceType::Texture)
 	{
 		return lhs.TextureSampleType == rhs.TextureSampleType;
 	}
 
-	if (lhs.ResourceType == ShaderBindingResourceTypeWebGPU::StorageTexture)
+	if (lhs.Resource.ResourceType == ShaderResourceType::StorageTexture)
 	{
 		return lhs.StorageTextureFormat == rhs.StorageTextureFormat &&
 			   lhs.StorageTextureAccess == rhs.StorageTextureAccess;
@@ -182,38 +184,46 @@ std::vector<ShaderBindingWebGPU> ReflectBindings(const std::string& code)
 			ShaderBindingWebGPU reflected;
 			reflected.Group = group;
 			reflected.Binding = binding;
+			reflected.Resource.Group = static_cast<int32_t>(group);
+			reflected.Resource.Slot = static_cast<int32_t>(binding);
 			if (statement.find("var<uniform>") != std::string::npos)
 			{
-				reflected.ResourceType = ShaderBindingResourceTypeWebGPU::UniformBuffer;
+				reflected.Resource.ResourceType = ShaderResourceType::UniformBuffer;
+				reflected.Resource.Access = ShaderResourceAccess::ReadOnly;
 			}
 			else if (statement.find("var<storage") != std::string::npos)
 			{
+				reflected.Resource.ResourceType = ShaderResourceType::StorageBuffer;
 				if (statement.find("read_write") != std::string::npos)
 				{
-					reflected.ResourceType = ShaderBindingResourceTypeWebGPU::StorageBuffer;
+					reflected.Resource.Access = ShaderResourceAccess::ReadWrite;
 				}
 				else
 				{
-					reflected.ResourceType = ShaderBindingResourceTypeWebGPU::ReadOnlyStorageBuffer;
+					reflected.Resource.Access = ShaderResourceAccess::ReadOnly;
 				}
 			}
 			else if (statement.find(": texture_storage_") != std::string::npos)
 			{
-				reflected.ResourceType = ShaderBindingResourceTypeWebGPU::StorageTexture;
+				reflected.Resource.ResourceType = ShaderResourceType::StorageTexture;
 				reflected.TextureViewDimension = ParseTextureViewDimension(statement);
 				reflected.StorageTextureFormat = ParseStorageTextureFormat(statement);
 				reflected.StorageTextureAccess = ParseStorageTextureAccess(statement);
+				reflected.Resource.Access =
+					reflected.StorageTextureAccess == wgpu::StorageTextureAccess::ReadOnly ? ShaderResourceAccess::ReadOnly : ShaderResourceAccess::ReadWrite;
 			}
 			else if (statement.find(": texture_") != std::string::npos)
 			{
-				reflected.ResourceType = ShaderBindingResourceTypeWebGPU::Texture;
+				reflected.Resource.ResourceType = ShaderResourceType::Texture;
+				reflected.Resource.Access = ShaderResourceAccess::ReadOnly;
 				reflected.TextureViewDimension = ParseTextureViewDimension(statement);
 				reflected.TextureSampleType =
 					statement.find(": texture_depth_") != std::string::npos ? wgpu::TextureSampleType::Depth : wgpu::TextureSampleType::Float;
 			}
 			else if (statement.find(": sampler") != std::string::npos)
 			{
-				reflected.ResourceType = ShaderBindingResourceTypeWebGPU::Sampler;
+				reflected.Resource.ResourceType = ShaderResourceType::Sampler;
+				reflected.Resource.Access = ShaderResourceAccess::ReadOnly;
 			}
 
 			bool exists = false;

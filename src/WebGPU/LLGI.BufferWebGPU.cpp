@@ -50,8 +50,8 @@ bool BufferWebGPU::Initialize(wgpu::Device& device, const BufferUsageType usage,
 		desc.usage |= wgpu::BufferUsage::Uniform;
 	}
 
-	if ((usage & BufferUsageType::ComputeRead) == BufferUsageType::ComputeRead ||
-		(usage & BufferUsageType::ComputeWrite) == BufferUsageType::ComputeWrite)
+	if ((usage & BufferUsageType::StorageRead) == BufferUsageType::StorageRead ||
+		(usage & BufferUsageType::StorageWrite) == BufferUsageType::StorageWrite)
 	{
 		desc.usage |= wgpu::BufferUsage::Storage;
 	}

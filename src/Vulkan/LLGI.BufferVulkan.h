@@ -9,6 +9,14 @@ namespace LLGI
 {
 class SingleFrameMemoryPoolVulkan;
 
+enum class BufferVulkanAccess
+{
+	TransferRead,
+	TransferWrite,
+	ShaderRead,
+	ShaderReadWrite,
+};
+
 class BufferVulkan : public Buffer
 {
 private:
@@ -39,7 +47,7 @@ public:
 
 	vk::Buffer GetBuffer() { return buffer_->buffer(); }
 
-	void ResourceBarrier(vk::CommandBuffer& commandBuffer, const vk::AccessFlags& accessFlag);
+	void ResourceBarrier(vk::CommandBuffer& commandBuffer, BufferVulkanAccess access);
 };
 
 } // namespace LLGI

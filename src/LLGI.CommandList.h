@@ -2,12 +2,13 @@
 #pragma once
 
 #include "LLGI.Base.h"
+#include "LLGI.Shader.h"
 
 namespace LLGI
 {
 static constexpr int NumConstantBuffer = 4;
 static constexpr int NumTexture = TextureSlotMax;
-static constexpr int NumComputeBuffer = TextureSlotMax;
+static constexpr int NumStorageBuffer = TextureSlotMax;
 
 class VertexBuffer;
 class IndexBuffer;
@@ -47,11 +48,10 @@ protected:
 		TextureMinMagFilter minMagFilter = TextureMinMagFilter::Nearest;
 	};
 
-	struct BindingComputeBuffer
+	struct BindingStorageBuffer
 	{
-		Buffer* computeBuffer = nullptr;
-		int32_t stride = 0;
-		bool is_read_only = false;
+		Buffer* storageBuffer = nullptr;
+		ShaderResourceBinding binding;
 	};
 
 private:
@@ -80,13 +80,13 @@ protected:
 
 	std::array<Buffer*, NumConstantBuffer> constantBuffers_;
 	std::array<BindingTexture, NumTexture> currentTextures_;
-	std::array<BindingComputeBuffer, NumComputeBuffer> computeBuffers_;
+	std::array<BindingStorageBuffer, NumStorageBuffer> storageBuffers_;
 
 protected:
 	void GetCurrentVertexBuffer(BindingVertexBuffer& buffer, bool& isDirtied);
 	void GetCurrentIndexBuffer(BindingIndexBuffer& buffer, bool& isDirtied);
 	void GetCurrentPipelineState(PipelineState*& pipelineState, bool& isDirtied);
-	void GetCurrentComputeBuffer(int32_t unit, BindingComputeBuffer& buffer);
+	void GetCurrentStorageBuffer(int32_t unit, BindingStorageBuffer& buffer);
 	void RegisterReferencedObject(ReferenceObject* referencedObject);
 
 public:
@@ -117,7 +117,19 @@ public:
 	virtual void SetIndexBuffer(Buffer* indexBuffer, int32_t stride, int32_t offset = 0);
 	virtual void SetPipelineState(PipelineState* pipelineState);
 	virtual void SetConstantBuffer(Buffer* constantBuffer, int32_t unit);
-	virtual void SetComputeBuffer(Buffer* computeBuffer, int32_t stride, int32_t unit, bool is_readonly);
+
+	/**
+		@brief specify a storage buffer.
+		@param stride logical element stride for structured buffer access.
+		@note On DirectX12, ByteAddressBuffer/RWByteAddressBuffer bindings still receive the logical stride here.
+		      The DX12 backend converts those bindings to raw buffer views internally.
+	*/
+	virtual void SetStorageBuffer(Buffer* storageBuffer,
+								  int32_t stride,
+								  int32_t unit,
+								  ShaderResourceAccess access,
+								  StorageBufferViewType viewType = StorageBufferViewType::Structured);
+	virtual void SetStorageBuffer(Buffer* storageBuffer, const ShaderResourceBinding& binding);
 
 	/**
 		@brief	copy a texture
@@ -170,7 +182,7 @@ public:
 	virtual bool EndQuery(Query* query, uint32_t queryIndex) { return false; }
 	virtual bool RecordTimestamp(Query* query, uint32_t queryIndex) { return false; }
 
-	virtual void ResetComputeBuffer();
+	virtual void ResetStorageBuffers();
 	virtual void BeginComputePass() {}
 	virtual void EndComputePass() {}
 	virtual bool BeginComputePassWithPlatformPtr(void* platformPtr) { return false; }

@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <string>
 
 namespace LLGI
 {
@@ -22,13 +23,13 @@ constexpr std::array<wgpu::AddressMode, 3> TextureAddressModes = {
 	wgpu::AddressMode::MirrorRepeat,
 };
 
-ShaderBindingResourceTypeWebGPU GetTextureBindingResourceType(TextureWebGPU* texture)
+ShaderResourceType GetTextureBindingResourceType(TextureWebGPU* texture)
 {
 	if (texture != nullptr && BitwiseContains(texture->GetParameter().Usage, TextureUsageType::Storage))
 	{
-		return ShaderBindingResourceTypeWebGPU::StorageTexture;
+		return ShaderResourceType::StorageTexture;
 	}
-	return ShaderBindingResourceTypeWebGPU::Texture;
+	return ShaderResourceType::Texture;
 }
 
 bool NeedsTextureSampler(TextureWebGPU* texture)
@@ -102,6 +103,18 @@ void CommandListWebGPU::SetComputeBindGroup(
 	}
 
 	computePassEncorder_.SetBindGroup(index, cache.bindGroup);
+}
+
+bool CommandListWebGPU::PrepareStandaloneCommand(const char* commandName)
+{
+	if (isInRenderPass_)
+	{
+		Log(LogType::Error, std::string("Please call ") + commandName + " outside of RenderPass");
+		return false;
+	}
+
+	EndComputePass();
+	return true;
 }
 
 CommandListWebGPU::CommandListWebGPU(wgpu::Device device) : device_(device)
@@ -323,7 +336,7 @@ void CommandListWebGPU::Draw(int32_t primitiveCount, int32_t instanceCount)
 		{
 			continue;
 		}
-		if (!pip->HasBinding(0, static_cast<uint32_t>(unit_ind), ShaderBindingResourceTypeWebGPU::UniformBuffer))
+		if (!pip->HasBinding(0, static_cast<uint32_t>(unit_ind), ShaderResourceType::UniformBuffer))
 		{
 			continue;
 		}
@@ -371,7 +384,7 @@ void CommandListWebGPU::Draw(int32_t primitiveCount, int32_t instanceCount)
 		wgpu::BindGroupEntry samplerEntry = {};
 		if (NeedsTextureSampler(texture))
 		{
-			if (!pip->HasBinding(2, static_cast<uint32_t>(unit_ind), ShaderBindingResourceTypeWebGPU::Sampler))
+			if (!pip->HasBinding(2, static_cast<uint32_t>(unit_ind), ShaderResourceType::Sampler))
 			{
 				continue;
 			}
@@ -382,18 +395,18 @@ void CommandListWebGPU::Draw(int32_t primitiveCount, int32_t instanceCount)
 		}
 	}
 
-	for (int unit_ind = 0; unit_ind < static_cast<int32_t>(computeBuffers_.size()); unit_ind++)
+	for (int unit_ind = 0; unit_ind < static_cast<int32_t>(storageBuffers_.size()); unit_ind++)
 	{
-		if (computeBuffers_[unit_ind].computeBuffer == nullptr)
+		if (storageBuffers_[unit_ind].storageBuffer == nullptr)
 		{
 			continue;
 		}
-		if (!pip->HasBinding(1, static_cast<uint32_t>(unit_ind), ShaderBindingResourceTypeWebGPU::StorageBuffer))
+		if (!pip->HasBinding(1, static_cast<uint32_t>(unit_ind), ShaderResourceType::StorageBuffer, storageBuffers_[unit_ind].binding.Access))
 		{
 			continue;
 		}
 
-		auto buffer = static_cast<BufferWebGPU*>(computeBuffers_[unit_ind].computeBuffer);
+		auto buffer = static_cast<BufferWebGPU*>(storageBuffers_[unit_ind].storageBuffer);
 		wgpu::BindGroupEntry bufferEntry = {};
 		bufferEntry.binding = static_cast<uint32_t>(unit_ind);
 		bufferEntry.buffer = buffer->GetBuffer();
@@ -481,7 +494,7 @@ void CommandListWebGPU::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ,
 		{
 			continue;
 		}
-		if (!pip->HasBinding(0, static_cast<uint32_t>(unit_ind), ShaderBindingResourceTypeWebGPU::UniformBuffer))
+		if (!pip->HasBinding(0, static_cast<uint32_t>(unit_ind), ShaderResourceType::UniformBuffer))
 		{
 			continue;
 		}
@@ -531,7 +544,7 @@ void CommandListWebGPU::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ,
 
 		if (NeedsTextureSampler(texture))
 		{
-			if (!pip->HasBinding(2, static_cast<uint32_t>(unit_ind), ShaderBindingResourceTypeWebGPU::Sampler))
+			if (!pip->HasBinding(2, static_cast<uint32_t>(unit_ind), ShaderResourceType::Sampler))
 			{
 				continue;
 			}
@@ -543,18 +556,18 @@ void CommandListWebGPU::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ,
 		}
 	}
 
-	for (int unit_ind = 0; unit_ind < static_cast<int32_t>(computeBuffers_.size()); unit_ind++)
+	for (int unit_ind = 0; unit_ind < static_cast<int32_t>(storageBuffers_.size()); unit_ind++)
 	{
-		if (computeBuffers_[unit_ind].computeBuffer == nullptr)
+		if (storageBuffers_[unit_ind].storageBuffer == nullptr)
 		{
 			continue;
 		}
-		if (!pip->HasBinding(2, static_cast<uint32_t>(unit_ind), ShaderBindingResourceTypeWebGPU::StorageBuffer))
+		if (!pip->HasBinding(2, static_cast<uint32_t>(unit_ind), ShaderResourceType::StorageBuffer, storageBuffers_[unit_ind].binding.Access))
 		{
 			continue;
 		}
 
-		auto buffer = static_cast<BufferWebGPU*>(computeBuffers_[unit_ind].computeBuffer);
+		auto buffer = static_cast<BufferWebGPU*>(storageBuffers_[unit_ind].storageBuffer);
 		wgpu::BindGroupEntry entry{};
 		entry.binding = static_cast<uint32_t>(unit_ind);
 		entry.buffer = buffer->GetBuffer();
@@ -605,13 +618,8 @@ void CommandListWebGPU::CopyTexture(Texture* src, Texture* dst)
 void CommandListWebGPU::CopyTexture(
 	Texture* src, Texture* dst, const Vec3I& srcPos, const Vec3I& dstPos, const Vec3I& size, int srcLayer, int dstLayer)
 {
-	if (isInRenderPass_)
-	{
-		Log(LogType::Error, "Please call CopyTexture outside of RenderPass");
+	if (!PrepareStandaloneCommand("CopyTexture"))
 		return;
-	}
-
-	EndComputePass();
 
 	auto srcTex = static_cast<TextureWebGPU*>(src);
 	auto dstTex = static_cast<TextureWebGPU*>(dst);
@@ -637,13 +645,8 @@ void CommandListWebGPU::CopyTexture(
 
 void CommandListWebGPU::GenerateMipMap(Texture* src)
 {
-	if (isInRenderPass_)
-	{
-		Log(LogType::Error, "Please call GenerateMipMap outside of RenderPass");
+	if (!PrepareStandaloneCommand("GenerateMipMap"))
 		return;
-	}
-
-	EndComputePass();
 
 	auto srcTex = static_cast<TextureWebGPU*>(src);
 	if (srcTex == nullptr)
@@ -656,14 +659,15 @@ void CommandListWebGPU::GenerateMipMap(Texture* src)
 
 void CommandListWebGPU::CopyBuffer(Buffer* src, Buffer* dst)
 {
+	if (!PrepareStandaloneCommand("CopyBuffer"))
+		return;
+
 	auto srcBuffer = static_cast<BufferWebGPU*>(src);
 	auto dstBuffer = static_cast<BufferWebGPU*>(dst);
 	if (srcBuffer == nullptr || dstBuffer == nullptr)
 	{
 		return;
 	}
-
-	EndComputePass();
 
 	commandEncorder_.CopyBufferToBuffer(srcBuffer->GetBuffer(), 0, dstBuffer->GetBuffer(), 0, std::min(srcBuffer->GetSize(), dstBuffer->GetSize()));
 

@@ -20,24 +20,12 @@ bool CanGenerateMipMap(const TextureDX12* texture)
 		   texture->GetParameter().SampleCount == 1;
 }
 
-bool ValidateByteAddressBufferStride(const PipelineStateDX12* pipeline, bool hasBuffer, bool isReadOnly, int32_t stride, int32_t unit)
+int32_t GetStorageBufferViewElementSize(int32_t stride, bool isRawBuffer)
 {
-	static_cast<void>(isReadOnly);
-	if (pipeline == nullptr || !hasBuffer)
-	{
-		return true;
-	}
-
-	const bool requiresByteAddressStride = pipeline->IsByteAddressSRV(unit) || pipeline->IsByteAddressUAV(unit);
-	if (!requiresByteAddressStride || stride == sizeof(uint32_t))
-	{
-		return true;
-	}
-
-	Log(LogType::Error,
-		"DirectX12 ByteAddressBuffer/RWByteAddressBuffer compute buffer binding requires stride 4. unit=" + std::to_string(unit) +
-			", stride=" + std::to_string(stride));
-	return false;
+	// D3D12 raw buffer views used by ByteAddressBuffer/RWByteAddressBuffer are addressed as 32-bit words.
+	// They must use DXGI_FORMAT_R32_TYPELESS with the RAW flag and StructureByteStride = 0, so the caller's logical stride
+	// is only used for structured buffer views.
+	return isRawBuffer ? static_cast<int32_t>(sizeof(uint32_t)) : stride;
 }
 
 D3D12_SHADER_RESOURCE_VIEW_DESC CreateMipmapSRVDesc(const TextureDX12* texture, int32_t mip)
@@ -286,18 +274,107 @@ D3D12_SAMPLER_DESC CommandListDX12::GeSamplerDescFromBindingTexture(const Comman
 	return samplerDesc;
 }
 
-D3D12_SHADER_RESOURCE_VIEW_DESC CommandListDX12::GetSRVDescFromBindingBuffer(const CommandList::BindingComputeBuffer& buffer, bool isRawBuffer)
+D3D12_SHADER_RESOURCE_VIEW_DESC CommandListDX12::GetSRVDescFromStorageBuffer(const CommandList::BindingStorageBuffer& buffer, bool isRawBuffer)
 {
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 	srvDesc.Format = isRawBuffer ? DXGI_FORMAT_R32_TYPELESS : DXGI_FORMAT_UNKNOWN;
 	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	srvDesc.Buffer.FirstElement = 0;
-	srvDesc.Buffer.StructureByteStride = isRawBuffer ? 0 : buffer.stride;
-	const auto elementSize = isRawBuffer ? static_cast<int32_t>(sizeof(uint32_t)) : buffer.stride;
-	srvDesc.Buffer.NumElements = buffer.computeBuffer->GetSize() / elementSize;
+	srvDesc.Buffer.StructureByteStride = isRawBuffer ? 0 : buffer.binding.ElementStride;
+	const auto elementSize = GetStorageBufferViewElementSize(buffer.binding.ElementStride, isRawBuffer);
+	srvDesc.Buffer.NumElements = buffer.storageBuffer->GetSize() / elementSize;
 	srvDesc.Buffer.Flags = isRawBuffer ? D3D12_BUFFER_SRV_FLAG_RAW : D3D12_BUFFER_SRV_FLAG_NONE;
 	return srvDesc;
+}
+
+D3D12_UNORDERED_ACCESS_VIEW_DESC CommandListDX12::GetUAVDescFromStorageBuffer(const CommandList::BindingStorageBuffer& buffer, bool isRawBuffer)
+{
+	D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+	uavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+	uavDesc.Format = isRawBuffer ? DXGI_FORMAT_R32_TYPELESS : DXGI_FORMAT_UNKNOWN;
+	uavDesc.Buffer.FirstElement = 0;
+	uavDesc.Buffer.StructureByteStride = isRawBuffer ? 0 : buffer.binding.ElementStride;
+	const auto elementSize = GetStorageBufferViewElementSize(buffer.binding.ElementStride, isRawBuffer);
+	uavDesc.Buffer.NumElements = buffer.storageBuffer->GetSize() / elementSize;
+	uavDesc.Buffer.Flags = isRawBuffer ? D3D12_BUFFER_UAV_FLAG_RAW : D3D12_BUFFER_UAV_FLAG_NONE;
+	return uavDesc;
+}
+
+bool CommandListDX12::ShouldBindStorageBufferAsSRV(
+	const PipelineStateDX12* pipeline, const CommandList::BindingStorageBuffer& buffer, int32_t unit) const
+{
+	return pipeline != nullptr && buffer.storageBuffer != nullptr && IsReadOnly(buffer.binding.Access) && !pipeline->RequiresRawUAV(unit);
+}
+
+bool CommandListDX12::ShouldBindStorageBufferAsUAV(
+	const PipelineStateDX12* pipeline, const CommandList::BindingStorageBuffer& buffer, int32_t unit) const
+{
+	return pipeline != nullptr && buffer.storageBuffer != nullptr && (!IsReadOnly(buffer.binding.Access) || pipeline->RequiresRawUAV(unit));
+}
+
+bool CommandListDX12::ValidateStorageBufferView(const CommandList::BindingStorageBuffer& buffer, bool isRawBuffer, int32_t unit) const
+{
+	if (buffer.storageBuffer == nullptr)
+	{
+		return false;
+	}
+
+	const auto bufferSize = buffer.storageBuffer->GetSize();
+	if (isRawBuffer)
+	{
+		if (bufferSize % static_cast<int32_t>(sizeof(uint32_t)) == 0)
+		{
+			return true;
+		}
+
+		Log(LogType::Error,
+			"DirectX12 ByteAddressBuffer/RWByteAddressBuffer storage buffer size must be aligned to 4 bytes. unit=" +
+				std::to_string(unit) + ", size=" + std::to_string(bufferSize));
+		return false;
+	}
+
+	if (buffer.binding.ElementStride > 0)
+	{
+		return true;
+	}
+
+	Log(LogType::Error,
+		"DirectX12 structured storage buffer binding requires positive stride. unit=" + std::to_string(unit) +
+			", stride=" + std::to_string(buffer.binding.ElementStride));
+	return false;
+}
+
+bool CommandListDX12::CreateStorageBufferSRV(
+	const CommandList::BindingStorageBuffer& buffer, bool isRawBuffer, int32_t unit, D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle)
+{
+	if (!ValidateStorageBufferView(buffer, isRawBuffer, unit))
+	{
+		return false;
+	}
+
+	auto bufferDX12 = static_cast<BufferDX12*>(buffer.storageBuffer);
+	bufferDX12->ResourceBarrier(currentCommandList_, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+
+	const auto srvDesc = GetSRVDescFromStorageBuffer(buffer, isRawBuffer);
+	graphics_->GetDevice()->CreateShaderResourceView(bufferDX12->Get(), &srvDesc, cpuHandle);
+	return true;
+}
+
+bool CommandListDX12::CreateStorageBufferUAV(
+	const CommandList::BindingStorageBuffer& buffer, bool isRawBuffer, int32_t unit, D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle)
+{
+	if (!ValidateStorageBufferView(buffer, isRawBuffer, unit))
+	{
+		return false;
+	}
+
+	auto bufferDX12 = static_cast<BufferDX12*>(buffer.storageBuffer);
+	bufferDX12->ResourceBarrier(currentCommandList_, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+	const auto uavDesc = GetUAVDescFromStorageBuffer(buffer, isRawBuffer);
+	graphics_->GetDevice()->CreateUnorderedAccessView(bufferDX12->Get(), nullptr, &uavDesc, cpuHandle);
+	return true;
 }
 
 void CommandListDX12::BeginInternal()
@@ -612,7 +689,7 @@ void CommandListDX12::Draw(int32_t primitiveCount, int32_t instanceCount)
 	// count descriptor
 	int32_t requiredCBDescriptorCount = NumConstantBuffer + NumTexture;
 	int32_t requiredSamplerDescriptorCount = 1;
-	int32_t requiredComputeDescriptorCount = 0;
+	int32_t requiredStorageDescriptorCount = 0;
 
 	for (size_t unit_ind = 0; unit_ind < currentTextures_.size(); unit_ind++)
 	{
@@ -622,17 +699,17 @@ void CommandListDX12::Draw(int32_t primitiveCount, int32_t instanceCount)
 		}
 	}
 
-	for (size_t unit_ind = 0; unit_ind < NumComputeBuffer; unit_ind++)
+	for (size_t unit_ind = 0; unit_ind < NumStorageBuffer; unit_ind++)
 	{
-		BindingComputeBuffer compute;
-		GetCurrentComputeBuffer(static_cast<int32_t>(unit_ind), compute);
-		if (compute.computeBuffer != nullptr)
+		BindingStorageBuffer storage;
+		GetCurrentStorageBuffer(static_cast<int32_t>(unit_ind), storage);
+		if (storage.storageBuffer != nullptr)
 		{
-			requiredComputeDescriptorCount = std::max(requiredComputeDescriptorCount, static_cast<int32_t>(unit_ind) + 1);
+			requiredStorageDescriptorCount = std::max(requiredStorageDescriptorCount, static_cast<int32_t>(unit_ind) + 1);
 		}
 	}
 
-	requiredCBDescriptorCount += requiredComputeDescriptorCount;
+	requiredCBDescriptorCount += requiredStorageDescriptorCount;
 
 	ID3D12DescriptorHeap* heapSampler = nullptr;
 	ID3D12DescriptorHeap* heapConstant = nullptr;
@@ -720,74 +797,35 @@ void CommandListDX12::Draw(int32_t primitiveCount, int32_t instanceCount)
 					graphics_->GetDevice()->CreateSampler(&samplerDesc, cpuHandle);
 				}
 			}
-			else if (unit_ind < NumComputeBuffer && computeBuffers_[unit_ind].computeBuffer != nullptr &&
-					 computeBuffers_[unit_ind].is_read_only && !pip->IsByteAddressUAV(static_cast<int32_t>(unit_ind)))
+			else if (unit_ind < NumStorageBuffer &&
+					 ShouldBindStorageBufferAsSRV(pip, storageBuffers_[unit_ind], static_cast<int32_t>(unit_ind)))
 			{
-				BindingComputeBuffer compute = computeBuffers_[unit_ind];
-				if (!ValidateByteAddressBufferStride(
-						pip, compute.computeBuffer != nullptr, compute.is_read_only, compute.stride, static_cast<int32_t>(unit_ind)))
+				BindingStorageBuffer storage = storageBuffers_[unit_ind];
+				const bool isRawBuffer = pip->RequiresRawSRV(static_cast<int32_t>(unit_ind)) ||
+										 storage.binding.StorageBufferView == StorageBufferViewType::Raw;
+				auto cpuHandle = cpuDescriptorHandleConstant[NumConstantBuffer + static_cast<int32_t>(unit_ind)];
+				if (!CreateStorageBufferSRV(storage, isRawBuffer, static_cast<int32_t>(unit_ind), cpuHandle))
 				{
 					return;
 				}
-
-				auto buffer = static_cast<BufferDX12*>(compute.computeBuffer);
-
-				if ((buffer->GetResourceState() & D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE) == 0)
-				{
-					D3D12_RESOURCE_BARRIER barrier = {};
-					barrier.Transition.pResource = buffer->Get();
-					barrier.Transition.StateBefore = buffer->GetResourceState();
-					barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-					currentCommandList_->ResourceBarrier(1, &barrier);
-					buffer->SetResourceState(D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-				}
-
-				const bool isRawBuffer = pip->IsByteAddressSRV(static_cast<int32_t>(unit_ind));
-				D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = GetSRVDescFromBindingBuffer(compute, isRawBuffer);
-				auto cpuHandle = cpuDescriptorHandleConstant[NumConstantBuffer + static_cast<int32_t>(unit_ind)];
-				graphics_->GetDevice()->CreateShaderResourceView(buffer->Get(), &srvDesc, cpuHandle);
 			}
 		}
 
 		// UAV
-		for (int32_t unit_ind = 0; unit_ind < NumComputeBuffer; unit_ind++)
+		for (int32_t unit_ind = 0; unit_ind < NumStorageBuffer; unit_ind++)
 		{
-			BindingComputeBuffer compute;
-			GetCurrentComputeBuffer(unit_ind, compute);
+			BindingStorageBuffer storage;
+			GetCurrentStorageBuffer(unit_ind, storage);
 
-			const bool bindsAsUAV = compute.computeBuffer != nullptr && (!compute.is_read_only || pip->IsByteAddressUAV(unit_ind));
-			if (!bindsAsUAV)
+			if (!ShouldBindStorageBufferAsUAV(pip, storage, unit_ind))
 				continue;
 
-			if (!ValidateByteAddressBufferStride(pip, true, compute.is_read_only, compute.stride, unit_ind))
+			const bool isRawBuffer = pip->RequiresRawUAV(unit_ind) || storage.binding.StorageBufferView == StorageBufferViewType::Raw;
+			auto cpuHandle = cpuDescriptorHandleConstant[NumConstantBuffer + NumTexture + unit_ind];
+			if (!CreateStorageBufferUAV(storage, isRawBuffer, unit_ind, cpuHandle))
 			{
 				return;
 			}
-
-			auto computeBuffer = static_cast<BufferDX12*>(compute.computeBuffer);
-
-			if (computeBuffer->GetResourceState() != D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
-			{
-				D3D12_RESOURCE_BARRIER barrier = {};
-				barrier.Transition.pResource = computeBuffer->Get();
-				barrier.Transition.StateBefore = computeBuffer->GetResourceState();
-				barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-				currentCommandList_->ResourceBarrier(1, &barrier);
-				computeBuffer->SetResourceState(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-			}
-
-			D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
-			uavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
-			const bool isRawBuffer = pip->IsByteAddressUAV(unit_ind);
-			const auto elementSize = isRawBuffer ? static_cast<int32_t>(sizeof(uint32_t)) : compute.stride;
-			uavDesc.Format = isRawBuffer ? DXGI_FORMAT_R32_TYPELESS : DXGI_FORMAT_UNKNOWN;
-			uavDesc.Buffer.StructureByteStride = isRawBuffer ? 0 : compute.stride;
-			uavDesc.Buffer.NumElements = computeBuffer->GetSize() / elementSize;
-			uavDesc.Buffer.FirstElement = 0;
-			uavDesc.Buffer.Flags = isRawBuffer ? D3D12_BUFFER_UAV_FLAG_RAW : D3D12_BUFFER_UAV_FLAG_NONE;
-
-			auto cpuHandle = cpuDescriptorHandleConstant[NumConstantBuffer + NumTexture + unit_ind];
-			graphics_->GetDevice()->CreateUnorderedAccessView(computeBuffer->Get(), nullptr, &uavDesc, cpuHandle);
 		}
 	}
 
@@ -967,65 +1005,17 @@ void CommandListDX12::CopyBuffer(Buffer* src, Buffer* dst)
 	auto srcBuf = static_cast<BufferDX12*>(src);
 	auto dstBuf = static_cast<BufferDX12*>(dst);
 
-	auto srcResource = srcBuf->Get();
 	auto srcState = srcBuf->GetResourceState();
-
-	auto requireChangeSrcState = !BitwiseContains(srcState, D3D12_RESOURCE_STATE_COPY_SOURCE);
-
-	auto dstResource = dstBuf->Get();
 	auto dstState = dstBuf->GetResourceState();
 
-	auto requireChangeDstState = !BitwiseContains(dstState, D3D12_RESOURCE_STATE_COPY_DEST);
+	srcBuf->ResourceBarrier(currentCommandList_, D3D12_RESOURCE_STATE_COPY_SOURCE);
+	dstBuf->ResourceBarrier(currentCommandList_, D3D12_RESOURCE_STATE_COPY_DEST);
 
-	if (requireChangeSrcState)
-	{
-		D3D12_RESOURCE_BARRIER barrier = {};
-		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-		barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-		barrier.Transition.pResource = srcResource;
-		barrier.Transition.StateBefore = srcState;
-		barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
-		barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-		currentCommandList_->ResourceBarrier(1, &barrier);
-	}
+	currentCommandList_->CopyBufferRegion(
+		dstBuf->Get(), dstBuf->GetOffset(), srcBuf->Get(), srcBuf->GetOffset(), std::min(srcBuf->GetSize(), dstBuf->GetSize()));
 
-	if (requireChangeDstState)
-	{
-		D3D12_RESOURCE_BARRIER barrier = {};
-		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-		barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-		barrier.Transition.pResource = dstResource;
-		barrier.Transition.StateBefore = dstState;
-		barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
-		barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-		currentCommandList_->ResourceBarrier(1, &barrier);
-	}
-
-	currentCommandList_->CopyBufferRegion(dstResource, dstBuf->GetOffset(), srcResource, srcBuf->GetOffset(), srcBuf->GetActualSize());
-
-	if (requireChangeSrcState)
-	{
-		D3D12_RESOURCE_BARRIER barrier = {};
-		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-		barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-		barrier.Transition.pResource = srcResource;
-		barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
-		barrier.Transition.StateAfter = srcState;
-		barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-		currentCommandList_->ResourceBarrier(1, &barrier);
-	}
-
-	if (requireChangeDstState)
-	{
-		D3D12_RESOURCE_BARRIER barrier = {};
-		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-		barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-		barrier.Transition.pResource = dstResource;
-		barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-		barrier.Transition.StateAfter = dstState;
-		barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-		currentCommandList_->ResourceBarrier(1, &barrier);
-	}
+	srcBuf->ResourceBarrier(currentCommandList_, srcState);
+	dstBuf->ResourceBarrier(currentCommandList_, dstState);
 
 	RegisterReferencedObject(src);
 	RegisterReferencedObject(dst);
@@ -1101,7 +1091,7 @@ void CommandListDX12::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ, i
 		currentCommandList_->SetPipelineState(p);
 	}
 
-	int32_t requiredCBDescriptorCount = NumConstantBuffer + NumTexture + NumComputeBuffer;
+	int32_t requiredCBDescriptorCount = NumConstantBuffer + NumTexture + NumStorageBuffer;
 
 	ID3D12DescriptorHeap* heapConstant = nullptr;
 	ID3D12DescriptorHeap* heapSampler = nullptr;
@@ -1163,32 +1153,18 @@ void CommandListDX12::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ, i
 	// SRV
 	for (size_t unit_ind = 0; unit_ind < currentTextures_.size(); unit_ind++)
 	{
-		if (unit_ind < NumComputeBuffer && computeBuffers_[unit_ind].computeBuffer != nullptr && computeBuffers_[unit_ind].is_read_only &&
-			!pip->IsByteAddressUAV(static_cast<int32_t>(unit_ind)))
+		if (unit_ind < NumStorageBuffer &&
+			ShouldBindStorageBufferAsSRV(pip, storageBuffers_[unit_ind], static_cast<int32_t>(unit_ind)))
 		{
-			BindingComputeBuffer compute = computeBuffers_[unit_ind];
+			BindingStorageBuffer storage = storageBuffers_[unit_ind];
 
-			auto buffer = static_cast<BufferDX12*>(compute.computeBuffer);
-
-			if ((buffer->GetResourceState() & D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE) == 0)
-			{
-				D3D12_RESOURCE_BARRIER barrier = {};
-				barrier.Transition.pResource = buffer->Get();
-				barrier.Transition.StateBefore = buffer->GetResourceState();
-				barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-				currentCommandList_->ResourceBarrier(1, &barrier);
-				buffer->SetResourceState(D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-			}
-
-			if (!ValidateByteAddressBufferStride(pip, true, compute.is_read_only, compute.stride, static_cast<int32_t>(unit_ind)))
+			const bool isRawBuffer = pip->RequiresRawSRV(static_cast<int32_t>(unit_ind)) ||
+									 storage.binding.StorageBufferView == StorageBufferViewType::Raw;
+			auto cpuHandle = cpuDescriptorHandleConstant[NumConstantBuffer + static_cast<int32_t>(unit_ind)];
+			if (!CreateStorageBufferSRV(storage, isRawBuffer, static_cast<int32_t>(unit_ind), cpuHandle))
 			{
 				return;
 			}
-
-			const bool isRawBuffer = pip->IsByteAddressSRV(static_cast<int32_t>(unit_ind));
-			D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = GetSRVDescFromBindingBuffer(compute, isRawBuffer);
-			auto cpuHandle = cpuDescriptorHandleConstant[NumConstantBuffer + static_cast<int32_t>(unit_ind)];
-			graphics_->GetDevice()->CreateShaderResourceView(buffer->Get(), &srvDesc, cpuHandle);
 		}
 
 		// textures
@@ -1221,42 +1197,17 @@ void CommandListDX12::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ, i
 	}
 
 	// UAV
-	for (int32_t unit_ind = 0; unit_ind < NumComputeBuffer; unit_ind++)
+	for (int32_t unit_ind = 0; unit_ind < NumStorageBuffer; unit_ind++)
 	{
-		const bool bindsAsUAV = computeBuffers_[unit_ind].computeBuffer != nullptr &&
-								(!computeBuffers_[unit_ind].is_read_only || pip->IsByteAddressUAV(unit_ind));
-		if (bindsAsUAV)
+		if (ShouldBindStorageBufferAsUAV(pip, storageBuffers_[unit_ind], unit_ind))
 		{
-			BindingComputeBuffer compute = computeBuffers_[unit_ind];
-			if (!ValidateByteAddressBufferStride(pip, true, compute.is_read_only, compute.stride, unit_ind))
+			BindingStorageBuffer storage = storageBuffers_[unit_ind];
+			const bool isRawBuffer = pip->RequiresRawUAV(unit_ind) || storage.binding.StorageBufferView == StorageBufferViewType::Raw;
+			auto cpuHandle = cpuDescriptorHandleConstant[NumConstantBuffer + NumTexture + unit_ind];
+			if (!CreateStorageBufferUAV(storage, isRawBuffer, unit_ind, cpuHandle))
 			{
 				return;
 			}
-
-			auto computeBuffer = static_cast<BufferDX12*>(compute.computeBuffer);
-
-			if (computeBuffer->GetResourceState() != D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
-			{
-				D3D12_RESOURCE_BARRIER barrier = {};
-				barrier.Transition.pResource = computeBuffer->Get();
-				barrier.Transition.StateBefore = computeBuffer->GetResourceState();
-				barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-				currentCommandList_->ResourceBarrier(1, &barrier);
-				computeBuffer->SetResourceState(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-			}
-
-			D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
-			uavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
-			const bool isRawBuffer = pip->IsByteAddressUAV(unit_ind);
-			const auto elementSize = isRawBuffer ? static_cast<int32_t>(sizeof(uint32_t)) : compute.stride;
-			uavDesc.Format = isRawBuffer ? DXGI_FORMAT_R32_TYPELESS : DXGI_FORMAT_UNKNOWN;
-			uavDesc.Buffer.StructureByteStride = isRawBuffer ? 0 : compute.stride;
-			uavDesc.Buffer.NumElements = computeBuffer->GetSize() / elementSize;
-			uavDesc.Buffer.FirstElement = 0;
-			uavDesc.Buffer.Flags = isRawBuffer ? D3D12_BUFFER_UAV_FLAG_RAW : D3D12_BUFFER_UAV_FLAG_NONE;
-
-			auto cpuHandle = cpuDescriptorHandleConstant[NumConstantBuffer + NumTexture + unit_ind];
-			graphics_->GetDevice()->CreateUnorderedAccessView(computeBuffer->Get(), nullptr, &uavDesc, cpuHandle);
 		}
 
 		if (currentTextures_[unit_ind].texture != nullptr &&
@@ -1277,19 +1228,13 @@ void CommandListDX12::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ, i
 	currentCommandList_->Dispatch(groupX, groupY, groupZ);
 
 	// UAV
-	for (int32_t unit_ind = 0; unit_ind < NumComputeBuffer; unit_ind++)
+	for (int32_t unit_ind = 0; unit_ind < NumStorageBuffer; unit_ind++)
 	{
-		const bool bindsAsUAV = computeBuffers_[unit_ind].computeBuffer != nullptr &&
-								(!computeBuffers_[unit_ind].is_read_only || pip->IsByteAddressUAV(unit_ind));
-		if (bindsAsUAV)
+		if (ShouldBindStorageBufferAsUAV(pip, storageBuffers_[unit_ind], unit_ind))
 		{
-			BindingComputeBuffer compute = computeBuffers_[unit_ind];
-			auto computeBuffer = static_cast<BufferDX12*>(compute.computeBuffer);
-
-			D3D12_RESOURCE_BARRIER barrier = {};
-			barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-			barrier.UAV.pResource = computeBuffer->Get();
-			currentCommandList_->ResourceBarrier(1, &barrier);
+			BindingStorageBuffer storage = storageBuffers_[unit_ind];
+			auto storageBuffer = static_cast<BufferDX12*>(storage.storageBuffer);
+			storageBuffer->UAVBarrier(currentCommandList_);
 		}
 	}
 

@@ -17,6 +17,8 @@ struct PlatformContextDX12
 	ID3D12GraphicsCommandList* commandList = nullptr;
 };
 
+class BufferDX12;
+
 class CommandListDX12 : public CommandList
 {
 private:
@@ -43,7 +45,13 @@ private:
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC GetSRVDescFromTexture(const TextureDX12* texture);
 	D3D12_SAMPLER_DESC GeSamplerDescFromBindingTexture(const BindingTexture& texture);
-	D3D12_SHADER_RESOURCE_VIEW_DESC GetSRVDescFromBindingBuffer(const BindingComputeBuffer& buffer, bool isRawBuffer);
+	D3D12_SHADER_RESOURCE_VIEW_DESC GetSRVDescFromStorageBuffer(const BindingStorageBuffer& buffer, bool isRawBuffer);
+	D3D12_UNORDERED_ACCESS_VIEW_DESC GetUAVDescFromStorageBuffer(const BindingStorageBuffer& buffer, bool isRawBuffer);
+	bool ShouldBindStorageBufferAsSRV(const PipelineStateDX12* pipeline, const BindingStorageBuffer& buffer, int32_t unit) const;
+	bool ShouldBindStorageBufferAsUAV(const PipelineStateDX12* pipeline, const BindingStorageBuffer& buffer, int32_t unit) const;
+	bool ValidateStorageBufferView(const BindingStorageBuffer& buffer, bool isRawBuffer, int32_t unit) const;
+	bool CreateStorageBufferSRV(const BindingStorageBuffer& buffer, bool isRawBuffer, int32_t unit, D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle);
+	bool CreateStorageBufferUAV(const BindingStorageBuffer& buffer, bool isRawBuffer, int32_t unit, D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle);
 	bool CreateMipmapRootSignature();
 	ID3D12PipelineState* GetMipmapPipelineState(DXGI_FORMAT format);
 	

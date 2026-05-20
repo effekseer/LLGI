@@ -7,22 +7,11 @@
 namespace LLGI
 {
 
-enum class ShaderBindingResourceTypeWebGPU
-{
-	Unknown,
-	UniformBuffer,
-	Texture,
-	Sampler,
-	StorageBuffer,
-	ReadOnlyStorageBuffer,
-	StorageTexture,
-};
-
 struct ShaderBindingWebGPU
 {
 	uint32_t Group = 0;
 	uint32_t Binding = 0;
-	ShaderBindingResourceTypeWebGPU ResourceType = ShaderBindingResourceTypeWebGPU::Unknown;
+	ShaderResourceBinding Resource;
 	wgpu::TextureViewDimension TextureViewDimension = wgpu::TextureViewDimension::e2D;
 	wgpu::TextureSampleType TextureSampleType = wgpu::TextureSampleType::Float;
 	wgpu::TextureFormat StorageTextureFormat = wgpu::TextureFormat::Undefined;

@@ -638,6 +638,7 @@ bool SPIRVReflection::Transpile(const std::shared_ptr<SPIRV>& spirv, LLGI::Shade
 {
 	Textures.clear();
 	Uniforms.clear();
+	ResourceBindings.clear();
 
 	ReflectionCompiler compiler(spirv->GetData());
 	spirv_cross::ShaderResources resources = compiler.get_shader_resources();
@@ -649,11 +650,25 @@ bool SPIRVReflection::Transpile(const std::shared_ptr<SPIRV>& spirv, LLGI::Shade
 		t.Name = sampler.name;
 		t.Offset = compiler.get_decoration(sampler.id, spv::DecorationBinding);
 		Textures.push_back(t);
+
+		ShaderResourceBinding binding;
+		binding.ResourceType = ShaderResourceType::Texture;
+		binding.Access = ShaderResourceAccess::ReadOnly;
+		binding.Stage = shaderStageType;
+		binding.Slot = t.Offset;
+		ResourceBindings.push_back(binding);
 	}
 
 	// Uniform
 	for (const auto& resource : resources.uniform_buffers)
 	{
+		ShaderResourceBinding binding;
+		binding.ResourceType = ShaderResourceType::UniformBuffer;
+		binding.Access = ShaderResourceAccess::ReadOnly;
+		binding.Stage = shaderStageType;
+		binding.Slot = compiler.get_decoration(resource.id, spv::DecorationBinding);
+		ResourceBindings.push_back(binding);
+
 		auto count = compiler.get_member_count(resource.base_type_id);
 		auto spirvType = compiler.get_type(resource.type_id);
 
@@ -666,6 +681,19 @@ bool SPIRVReflection::Transpile(const std::shared_ptr<SPIRV>& spirv, LLGI::Shade
 			u.Offset = compiler.get_member_decoration(resource.base_type_id, static_cast<uint32_t>(i), spv::DecorationOffset);
 			Uniforms.push_back(u);
 		}
+	}
+
+	for (const auto& resource : resources.storage_buffers)
+	{
+		ShaderResourceBinding binding;
+		binding.ResourceType = ShaderResourceType::StorageBuffer;
+		binding.Access = compiler.get_buffer_block_flags(resource.id).get(spv::DecorationNonWritable)
+							 ? ShaderResourceAccess::ReadOnly
+							 : ShaderResourceAccess::ReadWrite;
+		binding.StorageBufferView = StorageBufferViewType::Structured;
+		binding.Stage = shaderStageType;
+		binding.Slot = compiler.get_decoration(resource.id, spv::DecorationBinding);
+		ResourceBindings.push_back(binding);
 	}
 
 	// NumThreads
