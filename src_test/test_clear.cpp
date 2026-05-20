@@ -27,33 +27,34 @@ void test_clear_update(LLGI::DeviceType deviceType)
 		LLGI::Color8 color;
 		color.R = (count + 200) % 255;
 		color.G = 0;
-		color.B = 0;
-		color.A = 255;
+			color.B = 0;
+			color.A = 255;
 
-		auto commandList = commandListPool->Get();
+			auto renderPass = platform->GetCurrentScreen(color, true, false); // TODO: isDepthClear is false, because it fails with dx12.
 
-		commandList->Begin();
-		commandList->BeginRenderPass(
-			platform->GetCurrentScreen(color, true, false)); // TODO: isDepthClear is false, because it fails with dx12.
-		commandList->EndRenderPass();
-		commandList->End();
+			auto commandList = commandListPool->Get();
 
-		graphics->Execute(commandList);
+			commandList->Begin();
+			commandList->BeginRenderPass(renderPass);
+			commandList->EndRenderPass();
+			commandList->End();
 
-		platform->Present();
-		count++;
+			graphics->Execute(commandList);
 
-		if (TestHelper::GetIsCaptureRequired() && count == 30)
-		{
-			commandListPool->WaitUntilCompleted();
-			auto texture = platform->GetCurrentScreen(color, true)->GetRenderTexture(0);
-			auto data = graphics->CaptureRenderTarget(texture);
+			if (TestHelper::GetIsCaptureRequired() && count == 29)
+			{
+				commandListPool->WaitUntilCompleted();
+				auto texture = renderPass->GetRenderTexture(0);
+				auto data = graphics->CaptureRenderTarget(texture);
 
-			// save
-			Bitmap2D(data, texture->GetSizeAs2D().X, texture->GetSizeAs2D().Y, texture->GetFormat())
-				.Save("Clear.Update_" + TestHelper::GetDeviceName(deviceType) + ".png");
+				// save
+				Bitmap2D(data, texture->GetSizeAs2D().X, texture->GetSizeAs2D().Y, texture->GetFormat())
+					.Save("Clear.Update_" + TestHelper::GetDeviceName(deviceType) + ".png");
+			}
+
+			platform->Present();
+			count++;
 		}
-	}
 
 	graphics->WaitFinish();
 
@@ -90,32 +91,32 @@ void test_clear(LLGI::DeviceType deviceType)
 
 		sfMemoryPool->NewFrame();
 
-		// It need to create a command buffer between NewFrame and Present.
-		// Because get current screen returns other values by every frame.
-		auto commandList = commandListPool->Get();
+			// It need to create a command buffer between NewFrame and Present.
+			// Because get current screen returns other values by every frame.
+			auto renderPass = platform->GetCurrentScreen(color, true, false); // TODO: isDepthClear is false, because it fails with dx12.
+			auto commandList = commandListPool->Get();
 
-		commandList->Begin();
-		commandList->BeginRenderPass(
-			platform->GetCurrentScreen(color, true, false)); // TODO: isDepthClear is false, because it fails with dx12.
-		commandList->EndRenderPass();
-		commandList->End();
+			commandList->Begin();
+			commandList->BeginRenderPass(renderPass);
+			commandList->EndRenderPass();
+			commandList->End();
 
-		graphics->Execute(commandList);
+			graphics->Execute(commandList);
 
-		platform->Present();
-		count++;
+			if (TestHelper::GetIsCaptureRequired() && count == 29)
+			{
+				commandListPool->WaitUntilCompleted();
+				auto texture = renderPass->GetRenderTexture(0);
+				auto data = graphics->CaptureRenderTarget(texture);
 
-		if (TestHelper::GetIsCaptureRequired() && count == 30)
-		{
-			commandListPool->WaitUntilCompleted();
-			auto texture = platform->GetCurrentScreen(color, true)->GetRenderTexture(0);
-			auto data = graphics->CaptureRenderTarget(texture);
+				// save
+				Bitmap2D(data, texture->GetSizeAs2D().X, texture->GetSizeAs2D().Y, texture->GetFormat())
+					.Save("Clear.Basic_" + TestHelper::GetDeviceName(deviceType) + ".png");
+			}
 
-			// save
-			Bitmap2D(data, texture->GetSizeAs2D().X, texture->GetSizeAs2D().Y, texture->GetFormat())
-				.Save("Clear.Basic_" + TestHelper::GetDeviceName(deviceType) + ".png");
+			platform->Present();
+			count++;
 		}
-	}
 
 	graphics->WaitFinish();
 

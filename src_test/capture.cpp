@@ -168,22 +168,22 @@ void test_capture(LLGI::DeviceType deviceType, LLGI::Vec2I windowSize)
 		commandList->EndRenderPass();
 		commandList->End();
 
-		graphics->Execute(commandList);
+			graphics->Execute(commandList);
 
-		platform->Present();
-		count++;
+			if (TestHelper::GetIsCaptureRequired() && count == 29)
+			{
+				commandListPool->WaitUntilCompleted();
+				auto texture = renderPass->GetRenderTexture(0);
+				auto data = graphics->CaptureRenderTarget(texture);
 
-		if (TestHelper::GetIsCaptureRequired() && count == 30)
-		{
-			commandListPool->WaitUntilCompleted();
-			auto texture = platform->GetCurrentScreen(LLGI::Color8(), true)->GetRenderTexture(0);
-			auto data = graphics->CaptureRenderTarget(texture);
+				// save
+				std::string path = "Capture.Size" + std::to_string(windowSize.X) + "_" + TestHelper::GetDeviceName(deviceType) + ".png";
+				Bitmap2D(data, texture->GetSizeAs2D().X, texture->GetSizeAs2D().Y, texture->GetFormat()).Save(path.c_str());
+			}
 
-			// save
-			std::string path = "Capture.Size" + std::to_string(windowSize.X) + "_" + TestHelper::GetDeviceName(deviceType) + ".png";
-			Bitmap2D(data, texture->GetSizeAs2D().X, texture->GetSizeAs2D().Y, texture->GetFormat()).Save(path.c_str());
+			platform->Present();
+			count++;
 		}
-	}
 
 	pips.clear();
 }

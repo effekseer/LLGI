@@ -210,22 +210,23 @@ void test_textures(LLGI::DeviceType deviceType)
 		commandList->Draw(2);
 
 		commandList->EndRenderPass();
-		commandList->End();
+			commandList->End();
 
-		graphics->Execute(commandList);
-		platform->Present();
-		count++;
+			graphics->Execute(commandList);
 
-		if (TestHelper::GetIsCaptureRequired() && count == 30)
-		{
-			commandListPool->WaitUntilCompleted();
+			if (TestHelper::GetIsCaptureRequired() && count == 29)
+			{
+				commandListPool->WaitUntilCompleted();
 
-			auto textureMipmap = platform->GetCurrentScreen(LLGI::Color8(), true)->GetRenderTexture(0);
-			auto data = graphics->CaptureRenderTarget(textureMipmap);
-			std::string path = "SimpleRender.Textures_" + TestHelper::GetDeviceName(deviceType) + ".png";
-			Bitmap2D(data, textureMipmap->GetSizeAs2D().X, textureMipmap->GetSizeAs2D().Y, textureMipmap->GetFormat()).Save(path.c_str());
+				auto textureMipmap = renderPass->GetRenderTexture(0);
+				auto data = graphics->CaptureRenderTarget(textureMipmap);
+				std::string path = "SimpleRender.Textures_" + TestHelper::GetDeviceName(deviceType) + ".png";
+				Bitmap2D(data, textureMipmap->GetSizeAs2D().X, textureMipmap->GetSizeAs2D().Y, textureMipmap->GetFormat()).Save(path.c_str());
+			}
+
+			platform->Present();
+			count++;
 		}
-	}
 
 	pips.clear();
 

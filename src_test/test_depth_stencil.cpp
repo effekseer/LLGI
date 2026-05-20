@@ -272,18 +272,15 @@ void test_depth_stencil(LLGI::DeviceType deviceType, DepthStencilTestMode mode)
 
 		commandList->End();
 
-		graphics->Execute(commandList.get());
+			graphics->Execute(commandList.get());
 
-		platform->Present();
-		count++;
+			if (TestHelper::GetIsCaptureRequired() && count == 29)
+			{
+				commandList->WaitUntilCompleted();
+				auto texture = screenRenderPass->GetRenderTexture(0);
+				auto data = graphics->CaptureRenderTarget(texture);
 
-		if (TestHelper::GetIsCaptureRequired() && count == 30)
-		{
-			commandList->WaitUntilCompleted();
-			auto texture = platform->GetCurrentScreen(color, true)->GetRenderTexture(0);
-			auto data = graphics->CaptureRenderTarget(texture);
-
-			// save
+				// save
 			if (mode == DepthStencilTestMode::Depth)
 			{
 				Bitmap2D(data, texture->GetSizeAs2D().X, texture->GetSizeAs2D().Y, texture->GetFormat())
@@ -297,10 +294,13 @@ void test_depth_stencil(LLGI::DeviceType deviceType, DepthStencilTestMode mode)
 			else if (mode == DepthStencilTestMode::DepthAsTexture)
 			{
 				Bitmap2D(data, texture->GetSizeAs2D().X, texture->GetSizeAs2D().Y, texture->GetFormat())
-					.Save("DepthStencil.DepthAsTexture_" + TestHelper::GetDeviceName(deviceType) + ".png");
+						.Save("DepthStencil.DepthAsTexture_" + TestHelper::GetDeviceName(deviceType) + ".png");
+				}
 			}
+
+			platform->Present();
+			count++;
 		}
-	}
 
 	commandList->WaitUntilCompleted();
 	graphics->WaitFinish();

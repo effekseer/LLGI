@@ -89,9 +89,11 @@ void test_storage_buffer_compute_to_vertex_raw_layout(LLGI::DeviceType deviceTyp
 
 		auto commandList = commandListPool->Get();
 		commandList->Begin();
+		commandList->BeginComputePass();
 		commandList->SetPipelineState(computePipeline.get());
 		commandList->SetStorageBuffer(transformBuffer.get(), transformBindingStride, 0, LLGI::ShaderResourceAccess::ReadWrite);
 		commandList->Dispatch(elementCount, 1, 1, 1, 1, 1);
+		commandList->EndComputePass();
 		commandList->BeginRenderPass(renderPass);
 		commandList->SetVertexBuffer(vertexBuffer.get(), sizeof(SimpleVertex), 0);
 		commandList->SetIndexBuffer(indexBuffer.get(), 2);
@@ -108,10 +110,13 @@ void test_storage_buffer_compute_to_vertex_raw_layout(LLGI::DeviceType deviceTyp
 			commandListPool->WaitUntilCompleted();
 			auto texture = renderPass->GetRenderTexture(0);
 			auto data = graphics->CaptureRenderTarget(texture);
-			Bitmap2D bitmap(data, texture->GetSizeAs2D().X, texture->GetSizeAs2D().Y, texture->GetFormat());
+			auto textureSize = texture->GetSizeAs2D();
+			Bitmap2D bitmap(data, textureSize.X, textureSize.Y, texture->GetFormat());
+			auto scaleX = [textureSize](int x) { return x * textureSize.X / 1280; };
+			auto scaleY = [textureSize](int y) { return y * textureSize.Y / 720; };
 
-			auto findColor = [&bitmap](int xMin, int xMax, bool red) {
-				for (int y = 280; y < 440; y++)
+			auto findColor = [&bitmap, scaleY](int xMin, int xMax, bool red) {
+				for (int y = scaleY(280); y < scaleY(440); y++)
 				{
 					for (int x = xMin; x < xMax; x++)
 					{
@@ -141,8 +146,8 @@ void test_storage_buffer_compute_to_vertex_raw_layout(LLGI::DeviceType deviceTyp
 				bitmap.Save(path.c_str());
 			}
 
-			VERIFY(findColor(250, 520, true));
-			VERIFY(findColor(760, 1030, false));
+			VERIFY(findColor(scaleX(250), scaleX(520), true));
+			VERIFY(findColor(scaleX(760), scaleX(1030), false));
 			verified = true;
 		}
 
@@ -242,10 +247,12 @@ void test_storage_buffer_compute_to_vertex_multi_slot_raw_layout(LLGI::DeviceTyp
 
 		auto commandList = commandListPool->Get();
 		commandList->Begin();
+		commandList->BeginComputePass();
 		commandList->SetPipelineState(computePipeline.get());
 		commandList->SetStorageBuffer(transformBuffer.get(), transformBindingStride, 0, LLGI::ShaderResourceAccess::ReadWrite);
 		commandList->SetStorageBuffer(attributeBuffer.get(), attributeBindingStride, 1, LLGI::ShaderResourceAccess::ReadWrite);
 		commandList->Dispatch(elementCount, 1, 1, 1, 1, 1);
+		commandList->EndComputePass();
 		commandList->BeginRenderPass(renderPass);
 		commandList->SetVertexBuffer(vertexBuffer.get(), sizeof(SimpleVertex), 0);
 		commandList->SetIndexBuffer(indexBuffer.get(), 2);
@@ -263,7 +270,10 @@ void test_storage_buffer_compute_to_vertex_multi_slot_raw_layout(LLGI::DeviceTyp
 			commandListPool->WaitUntilCompleted();
 			auto texture = renderPass->GetRenderTexture(0);
 			auto data = graphics->CaptureRenderTarget(texture);
-			Bitmap2D bitmap(data, texture->GetSizeAs2D().X, texture->GetSizeAs2D().Y, texture->GetFormat());
+			auto textureSize = texture->GetSizeAs2D();
+			Bitmap2D bitmap(data, textureSize.X, textureSize.Y, texture->GetFormat());
+			auto scaleX = [textureSize](int x) { return x * textureSize.X / 1280; };
+			auto scaleY = [textureSize](int y) { return y * textureSize.Y / 720; };
 
 			auto findColor = [&bitmap](int xMin, int xMax, int yMin, int yMax, int channel) {
 				for (int y = yMin; y < yMax; y++)
@@ -287,9 +297,9 @@ void test_storage_buffer_compute_to_vertex_multi_slot_raw_layout(LLGI::DeviceTyp
 				bitmap.Save(path.c_str());
 			}
 
-			VERIFY(findColor(210, 430, 330, 520, 0));
-			VERIFY(findColor(520, 760, 250, 470, 1));
-			VERIFY(findColor(850, 1070, 170, 390, 2));
+			VERIFY(findColor(scaleX(210), scaleX(430), scaleY(330), scaleY(520), 0));
+			VERIFY(findColor(scaleX(520), scaleX(760), scaleY(250), scaleY(470), 1));
+			VERIFY(findColor(scaleX(850), scaleX(1070), scaleY(170), scaleY(390), 2));
 			verified = true;
 		}
 
@@ -408,10 +418,12 @@ void test_storage_buffer_history_ribbon_vertex_expansion(LLGI::DeviceType device
 
 		auto commandList = commandListPool->Get();
 		commandList->Begin();
+		commandList->BeginComputePass();
 		commandList->SetPipelineState(computePipeline.get());
 		commandList->SetStorageBuffer(historyBuffer.get(), historyBindingStride, 0, LLGI::ShaderResourceAccess::ReadWrite);
 		commandList->SetStorageBuffer(ribbonBuffer.get(), ribbonBindingStride, 1, LLGI::ShaderResourceAccess::ReadWrite);
 		commandList->Dispatch(vertexCount, 1, 1, 1, 1, 1);
+		commandList->EndComputePass();
 		commandList->BeginRenderPass(renderPass);
 		commandList->SetVertexBuffer(vertexBuffer.get(), sizeof(SimpleVertex), 0);
 		commandList->SetIndexBuffer(indexBuffer.get(), 2);
@@ -429,10 +441,13 @@ void test_storage_buffer_history_ribbon_vertex_expansion(LLGI::DeviceType device
 			commandListPool->WaitUntilCompleted();
 			auto texture = renderPass->GetRenderTexture(0);
 			auto data = graphics->CaptureRenderTarget(texture);
-			Bitmap2D bitmap(data, texture->GetSizeAs2D().X, texture->GetSizeAs2D().Y, texture->GetFormat());
+			auto textureSize = texture->GetSizeAs2D();
+			Bitmap2D bitmap(data, textureSize.X, textureSize.Y, texture->GetFormat());
+			auto scaleX = [textureSize](int x) { return x * textureSize.X / 1280; };
+			auto scaleY = [textureSize](int y) { return y * textureSize.Y / 720; };
 
-			auto findColor = [&bitmap](int xMin, int xMax, int channel) {
-				for (int y = 80; y < 640; y++)
+			auto findColor = [&bitmap, scaleY](int xMin, int xMax, int channel) {
+				for (int y = scaleY(80); y < scaleY(640); y++)
 				{
 					for (int x = xMin; x < xMax; x++)
 					{
@@ -453,8 +468,8 @@ void test_storage_buffer_history_ribbon_vertex_expansion(LLGI::DeviceType device
 				bitmap.Save(path.c_str());
 			}
 
-			VERIFY(findColor(80, 620, 0));
-			VERIFY(findColor(660, 1220, 1));
+			VERIFY(findColor(scaleX(80), scaleX(620), 0));
+			VERIFY(findColor(scaleX(660), scaleX(1220), 1));
 			verified = true;
 		}
 

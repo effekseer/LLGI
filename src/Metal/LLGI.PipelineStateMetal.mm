@@ -8,6 +8,19 @@
 
 namespace LLGI
 {
+namespace
+{
+bool LogMetalError(NSError* error)
+{
+	if (error == nil)
+	{
+		return false;
+	}
+
+	Log(LogType::Error, error.localizedDescription.UTF8String);
+	return true;
+}
+} // namespace
 
 bool PipelineStateMetal::Compile(PipelineState* self, Graphics* graphics)
 {
@@ -106,6 +119,11 @@ bool PipelineStateMetal::CreateRenderPipelineState(PipelineState* self, Graphics
 
 		id<MTLFunction> vf = [[vs->GetLibrary() newFunctionWithName:@"main0"] autorelease];
 		id<MTLFunction> pf = [[ps->GetLibrary() newFunctionWithName:@"main0"] autorelease];
+		if (vf == nil || pf == nil)
+		{
+			Log(LogType::Error, "Metal shader entry point main0 was not found.");
+			return false;
+		}
 		pipelineStateDescriptor_.vertexFunction = vf;
 		pipelineStateDescriptor_.fragmentFunction = pf;
 
@@ -293,6 +311,15 @@ bool PipelineStateMetal::CreateRenderPipelineState(PipelineState* self, Graphics
 		NSError* pipelineError = nil;
 		pipelineState_ = [g->GetDevice() newRenderPipelineStateWithDescriptor:pipelineStateDescriptor_ error:&pipelineError];
 
+		if (pipelineState_ == nil)
+		{
+			if (!LogMetalError(pipelineError))
+			{
+				Log(LogType::Error, "Failed to create Metal render pipeline state.");
+			}
+			return false;
+		}
+
 		return true;
 	}
 }
@@ -311,9 +338,23 @@ bool PipelineStateMetal::CreateComputePipelineState(PipelineState* self, Graphic
 			return false;
 
 		id<MTLFunction> cf = [[cs->GetLibrary() newFunctionWithName:@"main0"] autorelease];
+		if (cf == nil)
+		{
+			Log(LogType::Error, "Metal compute shader entry point main0 was not found.");
+			return false;
+		}
 
 		NSError* pipelineError = nil;
 		computePipelineState_ = [g->GetDevice() newComputePipelineStateWithFunction:cf error:&pipelineError];
+
+		if (computePipelineState_ == nil)
+		{
+			if (!LogMetalError(pipelineError))
+			{
+				Log(LogType::Error, "Failed to create Metal compute pipeline state.");
+			}
+			return false;
+		}
 
 		return true;
 	}

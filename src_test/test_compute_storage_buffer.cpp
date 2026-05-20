@@ -798,7 +798,7 @@ void test_compute_shader_storage_buffer_rebind_same_slot(LLGI::DeviceType device
 	graphics->Execute(commandList);
 	graphics->WaitFinish();
 
-	auto verify = [dataSize](const SlotTransitionData* result, const char* label) {
+	auto verify = [](const SlotTransitionData* result, const char* label) {
 		if (result == nullptr)
 		{
 			abort();

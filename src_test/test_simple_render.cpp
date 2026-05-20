@@ -127,16 +127,13 @@ void test_simple_rectangle(LLGI::DeviceType deviceType, SingleRectangleTestMode 
 		commandList->EndRenderPass();
 		commandList->End();
 
-		graphics->Execute(commandList);
+			graphics->Execute(commandList);
 
-		platform->Present();
-		count++;
-
-		if (TestHelper::GetIsCaptureRequired() && count == 30)
-		{
-			commandListPool->WaitUntilCompleted();
-			auto texture = platform->GetCurrentScreen(LLGI::Color8(), true)->GetRenderTexture(0);
-			auto data = graphics->CaptureRenderTarget(texture);
+			if (TestHelper::GetIsCaptureRequired() && count == 29)
+			{
+				commandListPool->WaitUntilCompleted();
+				auto texture = renderPass->GetRenderTexture(0);
+				auto data = graphics->CaptureRenderTarget(texture);
 
 			if (mode == SingleRectangleTestMode::Triangle)
 			{
@@ -152,10 +149,13 @@ void test_simple_rectangle(LLGI::DeviceType deviceType, SingleRectangleTestMode 
 			{
 				Bitmap2D(data, texture->GetSizeAs2D().X, texture->GetSizeAs2D().Y, texture->GetFormat())
 					.Save("SimpleRender.BasicPoint_" + TestHelper::GetDeviceName(deviceType) + ".png");
+				}
+				break;
 			}
-			break;
+
+			platform->Present();
+			count++;
 		}
-	}
 
 	commandListPool->WaitUntilCompleted();
 
@@ -247,21 +247,21 @@ void test_index_offset(LLGI::DeviceType deviceType)
 		commandList->EndRenderPass();
 		commandList->End();
 
-		graphics->Execute(commandList);
+			graphics->Execute(commandList);
 
-		platform->Present();
-		count++;
+			if (TestHelper::GetIsCaptureRequired() && count == 29)
+			{
+				commandListPool->WaitUntilCompleted();
+				auto texture = renderPass->GetRenderTexture(0);
+				auto data = graphics->CaptureRenderTarget(texture);
+				Bitmap2D(data, texture->GetSizeAs2D().X, texture->GetSizeAs2D().Y, texture->GetFormat())
+					.Save("SimpleRender.IndexOffset_" + TestHelper::GetDeviceName(deviceType) + ".png");
+				break;
+			}
 
-		if (TestHelper::GetIsCaptureRequired() && count == 30)
-		{
-			commandListPool->WaitUntilCompleted();
-			auto texture = platform->GetCurrentScreen(LLGI::Color8(), true)->GetRenderTexture(0);
-			auto data = graphics->CaptureRenderTarget(texture);
-			Bitmap2D(data, texture->GetSizeAs2D().X, texture->GetSizeAs2D().Y, texture->GetFormat())
-				.Save("SimpleRender.IndexOffset_" + TestHelper::GetDeviceName(deviceType) + ".png");
-			break;
+			platform->Present();
+			count++;
 		}
-	}
 
 	commandListPool->WaitUntilCompleted();
 
@@ -517,22 +517,19 @@ void main()
 		commandList->EndRenderPass();
 		commandList->End();
 
-		graphics->Execute(commandList);
+			graphics->Execute(commandList);
 
-		platform->Present();
-		count++;
+			if (type == LLGI::ConstantBufferType::ShortTime)
+			{
+				LLGI::SafeRelease(cb_vs);
+				LLGI::SafeRelease(cb_ps);
+			}
 
-		if (type == LLGI::ConstantBufferType::ShortTime)
-		{
-			LLGI::SafeRelease(cb_vs);
-			LLGI::SafeRelease(cb_ps);
-		}
-
-		if (TestHelper::GetIsCaptureRequired() && count == 30)
-		{
-			commandListPool->WaitUntilCompleted();
-			auto texture = platform->GetCurrentScreen(LLGI::Color8(), true)->GetRenderTexture(0);
-			auto data = graphics->CaptureRenderTarget(texture);
+			if (TestHelper::GetIsCaptureRequired() && count == 29)
+			{
+				commandListPool->WaitUntilCompleted();
+				auto texture = renderPass->GetRenderTexture(0);
+				auto data = graphics->CaptureRenderTarget(texture);
 
 			if (type == LLGI::ConstantBufferType::LongTime)
 			{
@@ -545,9 +542,12 @@ void main()
 					.Save("SimpleRender.ConstantST_" + TestHelper::GetDeviceName(deviceType) + ".png");
 			}
 
-			break;
+				break;
+			}
+
+			platform->Present();
+			count++;
 		}
-	}
 
 	commandListPool->WaitUntilCompleted();
 	graphics->WaitFinish();
@@ -778,16 +778,13 @@ void main()
 		commandList->EndRenderPass();
 		commandList->End();
 
-		graphics->Execute(commandList);
+			graphics->Execute(commandList);
 
-		platform->Present();
-		count++;
-
-		if (TestHelper::GetIsCaptureRequired() && count == 30)
-		{
-			commandListPool->WaitUntilCompleted();
-			auto texture = platform->GetCurrentScreen(LLGI::Color8(), true)->GetRenderTexture(0);
-			auto data = graphics->CaptureRenderTarget(texture);
+			if (TestHelper::GetIsCaptureRequired() && count == 29)
+			{
+				commandListPool->WaitUntilCompleted();
+				auto texture = renderPass->GetRenderTexture(0);
+				auto data = graphics->CaptureRenderTarget(texture);
 
 			if (mode == SimpleTextureRectangleTestMode::RGBA8)
 			{
@@ -805,10 +802,13 @@ void main()
 			{
 				Bitmap2D(data, texture->GetSizeAs2D().X, texture->GetSizeAs2D().Y, texture->GetFormat())
 					.Save("SimpleRender.TextureR8_" + TestHelper::GetDeviceName(deviceType) + ".png");
+				}
+				break;
 			}
-			break;
+
+			platform->Present();
+			count++;
 		}
-	}
 
 	commandListPool->WaitUntilCompleted();
 	graphics->WaitFinish();
@@ -919,22 +919,22 @@ void test_instancing(LLGI::DeviceType deviceType)
 		commandList->EndRenderPass();
 		commandList->End();
 
-		graphics->Execute(commandList);
+			graphics->Execute(commandList);
 
-		platform->Present();
-		count++;
-
-		if (TestHelper::GetIsCaptureRequired() && count == 30)
-		{
-			commandListPool->WaitUntilCompleted();
-			auto texture = platform->GetCurrentScreen(LLGI::Color8(), true)->GetRenderTexture(0);
-			auto data = graphics->CaptureRenderTarget(texture);
+			if (TestHelper::GetIsCaptureRequired() && count == 29)
+			{
+				commandListPool->WaitUntilCompleted();
+				auto texture = renderPass->GetRenderTexture(0);
+				auto data = graphics->CaptureRenderTarget(texture);
 
 			// save
-			std::string path = "SimpleRender.Instancing_" + TestHelper::GetDeviceName(deviceType) + ".png";
-			Bitmap2D(data, texture->GetSizeAs2D().X, texture->GetSizeAs2D().Y, texture->GetFormat()).Save(path.c_str());
+				std::string path = "SimpleRender.Instancing_" + TestHelper::GetDeviceName(deviceType) + ".png";
+				Bitmap2D(data, texture->GetSizeAs2D().X, texture->GetSizeAs2D().Y, texture->GetFormat()).Save(path.c_str());
+			}
+
+			platform->Present();
+			count++;
 		}
-	}
 
 	commandListPool->WaitUntilCompleted();
 	graphics->WaitFinish();
@@ -1053,22 +1053,22 @@ void test_vertex_structured(LLGI::DeviceType deviceType)
 		commandList->EndRenderPass();
 		commandList->End();
 
-		graphics->Execute(commandList);
+			graphics->Execute(commandList);
 
-		platform->Present();
-		count++;
-
-		if (TestHelper::GetIsCaptureRequired() && count == 30)
-		{
-			commandListPool->WaitUntilCompleted();
-			auto texture = platform->GetCurrentScreen(LLGI::Color8(), true)->GetRenderTexture(0);
-			auto data = graphics->CaptureRenderTarget(texture);
+			if (TestHelper::GetIsCaptureRequired() && count == 29)
+			{
+				commandListPool->WaitUntilCompleted();
+				auto texture = renderPass->GetRenderTexture(0);
+				auto data = graphics->CaptureRenderTarget(texture);
 
 			// save
-			std::string path = "SimpleRender.VertexStructured_" + TestHelper::GetDeviceName(deviceType) + ".png";
-			Bitmap2D(data, texture->GetSizeAs2D().X, texture->GetSizeAs2D().Y, texture->GetFormat()).Save(path.c_str());
+				std::string path = "SimpleRender.VertexStructured_" + TestHelper::GetDeviceName(deviceType) + ".png";
+				Bitmap2D(data, texture->GetSizeAs2D().X, texture->GetSizeAs2D().Y, texture->GetFormat()).Save(path.c_str());
+			}
+
+			platform->Present();
+			count++;
 		}
-	}
 
 	pips.clear();
 }
@@ -1167,22 +1167,22 @@ void test_vtf(LLGI::DeviceType deviceType)
 		commandList->EndRenderPass();
 		commandList->End();
 
-		graphics->Execute(commandList);
+			graphics->Execute(commandList);
 
-		platform->Present();
-		count++;
-
-		if (TestHelper::GetIsCaptureRequired() && count == 30)
-		{
-			commandListPool->WaitUntilCompleted();
-			auto texture = platform->GetCurrentScreen(LLGI::Color8(), true)->GetRenderTexture(0);
-			auto data = graphics->CaptureRenderTarget(texture);
+			if (TestHelper::GetIsCaptureRequired() && count == 29)
+			{
+				commandListPool->WaitUntilCompleted();
+				auto texture = renderPass->GetRenderTexture(0);
+				auto data = graphics->CaptureRenderTarget(texture);
 
 			// save
-			std::string path = "SimpleRender.VTF_" + TestHelper::GetDeviceName(deviceType) + ".png";
-			Bitmap2D(data, texture->GetSizeAs2D().X, texture->GetSizeAs2D().Y, texture->GetFormat()).Save(path.c_str());
+				std::string path = "SimpleRender.VTF_" + TestHelper::GetDeviceName(deviceType) + ".png";
+				Bitmap2D(data, texture->GetSizeAs2D().X, texture->GetSizeAs2D().Y, texture->GetFormat()).Save(path.c_str());
+			}
+
+			platform->Present();
+			count++;
 		}
-	}
 
 	commandListPool->WaitUntilCompleted();
 	graphics->WaitFinish();

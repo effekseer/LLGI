@@ -214,7 +214,7 @@ void test_renderPass(LLGI::DeviceType deviceType, RenderPassTestMode mode)
 			commandList->CopyTexture(renderTexture, renderTextureDst);
 		}
 
-		commandList->BeginRenderPass(platform->GetCurrentScreen(color2, true));
+			commandList->BeginRenderPass(renderPassSc);
 
 		commandList->SetVertexBuffer(vb.get(), sizeof(SimpleVertex), 0);
 		commandList->SetIndexBuffer(ib.get(), 2);
@@ -257,14 +257,11 @@ void test_renderPass(LLGI::DeviceType deviceType, RenderPassTestMode mode)
 
 		graphics->Execute(commandList);
 
-		platform->Present();
-		count++;
-
-		if (TestHelper::GetIsCaptureRequired() && count == 30)
-		{
-			commandListPool->WaitUntilCompleted();
-			auto screenTex = platform->GetCurrentScreen(LLGI::Color8(), true)->GetRenderTexture(0);
-			auto data = graphics->CaptureRenderTarget(screenTex);
+			if (TestHelper::GetIsCaptureRequired() && count == 29)
+			{
+				commandListPool->WaitUntilCompleted();
+				auto screenTex = renderPassSc->GetRenderTexture(0);
+				auto data = graphics->CaptureRenderTarget(screenTex);
 
 			if (mode == RenderPassTestMode::MSAA)
 			{
@@ -285,11 +282,14 @@ void test_renderPass(LLGI::DeviceType deviceType, RenderPassTestMode mode)
 			if (mode == RenderPassTestMode::None)
 			{
 				auto data2 = graphics->CaptureRenderTarget(renderTexture);
-				Bitmap2D(data2, renderTexture->GetSizeAs2D().X, renderTexture->GetSizeAs2D().Y, renderTexture->GetFormat())
-					.Save("RenderPass.Basic.2_" + TestHelper::GetDeviceName(deviceType) + ".png");
+					Bitmap2D(data2, renderTexture->GetSizeAs2D().X, renderTexture->GetSizeAs2D().Y, renderTexture->GetFormat())
+						.Save("RenderPass.Basic.2_" + TestHelper::GetDeviceName(deviceType) + ".png");
+				}
 			}
+
+			platform->Present();
+			count++;
 		}
-	}
 
 	commandListPool->WaitUntilCompleted();
 	graphics->WaitFinish();
@@ -531,7 +531,7 @@ void test_multiRenderPass(LLGI::DeviceType deviceType)
 		commandList->Draw(2);
 		commandList->EndRenderPass();
 
-		commandList->BeginRenderPass(platform->GetCurrentScreen(color2, true));
+			commandList->BeginRenderPass(renderPassSc);
 		commandList->SetVertexBuffer(vb.get(), sizeof(SimpleVertex), 0);
 		commandList->SetIndexBuffer(ib.get(), 2);
 
@@ -572,18 +572,18 @@ void test_multiRenderPass(LLGI::DeviceType deviceType)
 
 		graphics->Execute(commandList);
 
-		platform->Present();
-		count++;
+			if (TestHelper::GetIsCaptureRequired() && count == 29)
+			{
+				commandListPool->WaitUntilCompleted();
+				auto screenTexture = renderPassSc->GetRenderTexture(0);
+				auto data = graphics->CaptureRenderTarget(screenTexture);
+				Bitmap2D(data, screenTexture->GetSizeAs2D().X, screenTexture->GetSizeAs2D().Y, screenTexture->GetFormat())
+					.Save("RenderPass.MRT_" + TestHelper::GetDeviceName(deviceType) + ".png");
+			}
 
-		if (TestHelper::GetIsCaptureRequired() && count == 30)
-		{
-			commandListPool->WaitUntilCompleted();
-			auto screenTexture = platform->GetCurrentScreen(LLGI::Color8(), true)->GetRenderTexture(0);
-			auto data = graphics->CaptureRenderTarget(screenTexture);
-			Bitmap2D(data, screenTexture->GetSizeAs2D().X, screenTexture->GetSizeAs2D().Y, screenTexture->GetFormat())
-				.Save("RenderPass.MRT_" + TestHelper::GetDeviceName(deviceType) + ".png");
+			platform->Present();
+			count++;
 		}
-	}
 
 	commandListPool->WaitUntilCompleted();
 	graphics->WaitFinish();
