@@ -105,7 +105,7 @@ void test_storage_buffer_compute_to_vertex_raw_layout(LLGI::DeviceType deviceTyp
 
 		graphics->Execute(commandList);
 
-		if (count == 29)
+		if ((count + 1) == 30)
 		{
 			commandListPool->WaitUntilCompleted();
 			auto texture = renderPass->GetRenderTexture(0);
@@ -265,7 +265,7 @@ void test_storage_buffer_compute_to_vertex_multi_slot_raw_layout(LLGI::DeviceTyp
 
 		graphics->Execute(commandList);
 
-		if (count == 29)
+		if ((count + 1) == 30)
 		{
 			commandListPool->WaitUntilCompleted();
 			auto texture = renderPass->GetRenderTexture(0);
@@ -436,7 +436,7 @@ void test_storage_buffer_history_ribbon_vertex_expansion(LLGI::DeviceType device
 
 		graphics->Execute(commandList);
 
-		if (count == 29)
+		if ((count + 1) == 30)
 		{
 			commandListPool->WaitUntilCompleted();
 			auto texture = renderPass->GetRenderTexture(0);

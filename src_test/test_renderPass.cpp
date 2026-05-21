@@ -257,7 +257,7 @@ void test_renderPass(LLGI::DeviceType deviceType, RenderPassTestMode mode)
 
 		graphics->Execute(commandList);
 
-			if (TestHelper::GetIsCaptureRequired() && count == 29)
+			if (TestHelper::GetIsCaptureRequired() && (count + 1) == 30)
 			{
 				commandListPool->WaitUntilCompleted();
 				auto screenTex = renderPassSc->GetRenderTexture(0);
@@ -572,7 +572,7 @@ void test_multiRenderPass(LLGI::DeviceType deviceType)
 
 		graphics->Execute(commandList);
 
-			if (TestHelper::GetIsCaptureRequired() && count == 29)
+			if (TestHelper::GetIsCaptureRequired() && (count + 1) == 30)
 			{
 				commandListPool->WaitUntilCompleted();
 				auto screenTexture = renderPassSc->GetRenderTexture(0);

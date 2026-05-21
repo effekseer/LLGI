@@ -129,7 +129,7 @@ void test_simple_rectangle(LLGI::DeviceType deviceType, SingleRectangleTestMode 
 
 			graphics->Execute(commandList);
 
-			if (TestHelper::GetIsCaptureRequired() && count == 29)
+			if (TestHelper::GetIsCaptureRequired() && (count + 1) == 30)
 			{
 				commandListPool->WaitUntilCompleted();
 				auto texture = renderPass->GetRenderTexture(0);
@@ -249,7 +249,7 @@ void test_index_offset(LLGI::DeviceType deviceType)
 
 			graphics->Execute(commandList);
 
-			if (TestHelper::GetIsCaptureRequired() && count == 29)
+			if (TestHelper::GetIsCaptureRequired() && (count + 1) == 30)
 			{
 				commandListPool->WaitUntilCompleted();
 				auto texture = renderPass->GetRenderTexture(0);
@@ -525,7 +525,7 @@ void main()
 				LLGI::SafeRelease(cb_ps);
 			}
 
-			if (TestHelper::GetIsCaptureRequired() && count == 29)
+			if (TestHelper::GetIsCaptureRequired() && (count + 1) == 30)
 			{
 				commandListPool->WaitUntilCompleted();
 				auto texture = renderPass->GetRenderTexture(0);
@@ -780,7 +780,7 @@ void main()
 
 			graphics->Execute(commandList);
 
-			if (TestHelper::GetIsCaptureRequired() && count == 29)
+			if (TestHelper::GetIsCaptureRequired() && (count + 1) == 30)
 			{
 				commandListPool->WaitUntilCompleted();
 				auto texture = renderPass->GetRenderTexture(0);
@@ -921,7 +921,7 @@ void test_instancing(LLGI::DeviceType deviceType)
 
 			graphics->Execute(commandList);
 
-			if (TestHelper::GetIsCaptureRequired() && count == 29)
+			if (TestHelper::GetIsCaptureRequired() && (count + 1) == 30)
 			{
 				commandListPool->WaitUntilCompleted();
 				auto texture = renderPass->GetRenderTexture(0);
@@ -1055,7 +1055,7 @@ void test_vertex_structured(LLGI::DeviceType deviceType)
 
 			graphics->Execute(commandList);
 
-			if (TestHelper::GetIsCaptureRequired() && count == 29)
+			if (TestHelper::GetIsCaptureRequired() && (count + 1) == 30)
 			{
 				commandListPool->WaitUntilCompleted();
 				auto texture = renderPass->GetRenderTexture(0);
@@ -1169,7 +1169,7 @@ void test_vtf(LLGI::DeviceType deviceType)
 
 			graphics->Execute(commandList);
 
-			if (TestHelper::GetIsCaptureRequired() && count == 29)
+			if (TestHelper::GetIsCaptureRequired() && (count + 1) == 30)
 			{
 				commandListPool->WaitUntilCompleted();
 				auto texture = renderPass->GetRenderTexture(0);

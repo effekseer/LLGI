@@ -214,7 +214,7 @@ void test_textures(LLGI::DeviceType deviceType)
 
 			graphics->Execute(commandList);
 
-			if (TestHelper::GetIsCaptureRequired() && count == 29)
+			if (TestHelper::GetIsCaptureRequired() && (count + 1) == 30)
 			{
 				commandListPool->WaitUntilCompleted();
 

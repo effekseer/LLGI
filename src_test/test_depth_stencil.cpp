@@ -274,7 +274,7 @@ void test_depth_stencil(LLGI::DeviceType deviceType, DepthStencilTestMode mode)
 
 			graphics->Execute(commandList.get());
 
-			if (TestHelper::GetIsCaptureRequired() && count == 29)
+			if (TestHelper::GetIsCaptureRequired() && (count + 1) == 30)
 			{
 				commandList->WaitUntilCompleted();
 				auto texture = screenRenderPass->GetRenderTexture(0);

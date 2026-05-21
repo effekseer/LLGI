@@ -41,7 +41,7 @@ void test_clear_update(LLGI::DeviceType deviceType)
 
 			graphics->Execute(commandList);
 
-			if (TestHelper::GetIsCaptureRequired() && count == 29)
+			if (TestHelper::GetIsCaptureRequired() && (count + 1) == 30)
 			{
 				commandListPool->WaitUntilCompleted();
 				auto texture = renderPass->GetRenderTexture(0);
@@ -103,7 +103,7 @@ void test_clear(LLGI::DeviceType deviceType)
 
 			graphics->Execute(commandList);
 
-			if (TestHelper::GetIsCaptureRequired() && count == 29)
+			if (TestHelper::GetIsCaptureRequired() && (count + 1) == 30)
 			{
 				commandListPool->WaitUntilCompleted();
 				auto texture = renderPass->GetRenderTexture(0);

@@ -170,7 +170,7 @@ void test_capture(LLGI::DeviceType deviceType, LLGI::Vec2I windowSize)
 
 			graphics->Execute(commandList);
 
-			if (TestHelper::GetIsCaptureRequired() && count == 29)
+			if (TestHelper::GetIsCaptureRequired() && (count + 1) == 30)
 			{
 				commandListPool->WaitUntilCompleted();
 				auto texture = renderPass->GetRenderTexture(0);
