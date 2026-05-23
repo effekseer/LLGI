@@ -15,8 +15,35 @@ endif()
 option(BUILD_WEBGPU "build webgpu backend" OFF)
 option(BUILD_WEBGPU_BROWSER_TEST
        "build a WebAssembly browser smoke test for the WebGPU backend" OFF)
+option(BUILD_WEBGPU_BROWSER_SIMD
+       "build WebGPU browser tests with WebAssembly SIMD" OFF)
+option(BUILD_WEBGPU_BROWSER_THREADS
+       "build WebGPU browser tests with WebAssembly threads" OFF)
+set(BUILD_WEBGPU_BROWSER_PTHREAD_POOL_SIZE
+    "4"
+    CACHE STRING "Initial pthread pool size for browser WebGPU tests")
 if(BUILD_WEBGPU_BROWSER_TEST AND NOT BUILD_WEBGPU)
   message(FATAL_ERROR "BUILD_WEBGPU_BROWSER_TEST requires BUILD_WEBGPU=ON.")
+endif()
+if((BUILD_WEBGPU_BROWSER_SIMD OR BUILD_WEBGPU_BROWSER_THREADS)
+   AND NOT BUILD_WEBGPU_BROWSER_TEST)
+  message(
+    FATAL_ERROR
+      "BUILD_WEBGPU_BROWSER_SIMD and BUILD_WEBGPU_BROWSER_THREADS require BUILD_WEBGPU_BROWSER_TEST=ON."
+  )
+endif()
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR
+   AND BUILD_WEBGPU_BROWSER_TEST
+   AND EMSCRIPTEN)
+  if(BUILD_WEBGPU_BROWSER_SIMD)
+    add_compile_options(-msimd128 -msse2)
+    add_link_options(-msimd128 -msse2)
+  endif()
+
+  if(BUILD_WEBGPU_BROWSER_THREADS)
+    add_compile_options(-pthread)
+    add_link_options(-pthread "-sPTHREAD_POOL_SIZE=${BUILD_WEBGPU_BROWSER_PTHREAD_POOL_SIZE}")
+  endif()
 endif()
 set(WEBGPU_DAWN_SOURCE_DIR
     ""

@@ -10,6 +10,8 @@ const args = process.argv.slice(2);
 const htmlPath = args[0];
 const filterArg = args.find((arg) => arg.startsWith('--filter='));
 const filter = filterArg ? filterArg.substring('--filter='.length) : 'WebGPUBrowser.*';
+const useCrossOriginIsolation =
+	args.includes('--cross-origin-isolated') || process.env.LLGI_WEBGPU_CROSS_ORIGIN_ISOLATED === '1';
 
 if (!htmlPath) {
 	console.error('Usage: node run_webgpu_browser_test.mjs <LLGI_Test.html> [--filter=WebGPUBrowser.*]');
@@ -74,6 +76,23 @@ function contentType(filePath) {
 	return 'application/octet-stream';
 }
 
+function responseHeaders(filePath) {
+	const headers = {
+		'Content-Type': contentType(filePath),
+		'Cache-Control': 'no-store, max-age=0',
+		'Pragma': 'no-cache',
+		'Expires': '0',
+	};
+
+	if (useCrossOriginIsolation) {
+		headers['Cross-Origin-Opener-Policy'] = 'same-origin';
+		headers['Cross-Origin-Embedder-Policy'] = 'require-corp';
+		headers['Cross-Origin-Resource-Policy'] = 'same-origin';
+	}
+
+	return headers;
+}
+
 const server = http.createServer((request, response) => {
 	const requestUrl = new URL(request.url, 'http://127.0.0.1');
 	if (requestUrl.pathname === '/favicon.ico') {
@@ -91,12 +110,7 @@ const server = http.createServer((request, response) => {
 		return;
 	}
 
-	response.writeHead(200, {
-		'Content-Type': contentType(filePath),
-		'Cache-Control': 'no-store, max-age=0',
-		'Pragma': 'no-cache',
-		'Expires': '0',
-	});
+	response.writeHead(200, responseHeaders(filePath));
 	fs.createReadStream(filePath).pipe(response);
 });
 

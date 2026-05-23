@@ -75,10 +75,14 @@ endif()
 if(BUILD_WEBGPU_BROWSER_TEST AND EMSCRIPTEN)
   find_program(NODE_EXE node)
   if(NODE_EXE)
-    add_test(
-      NAME LLGI_WebGPU_Browser
-      COMMAND
+    set(llgi_webgpu_browser_test_command
         ${NODE_EXE} ${CMAKE_CURRENT_SOURCE_DIR}/browser/run_webgpu_browser_test.mjs
         $<TARGET_FILE:LLGI_Test> --filter=WebGPUBrowser.*)
+    if(BUILD_WEBGPU_BROWSER_THREADS)
+      list(APPEND llgi_webgpu_browser_test_command --cross-origin-isolated)
+    endif()
+    add_test(
+      NAME LLGI_WebGPU_Browser
+      COMMAND ${llgi_webgpu_browser_test_command})
   endif()
 endif()
