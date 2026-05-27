@@ -102,7 +102,7 @@ Platform* CreatePlatform(const PlatformParameter& parameter, Window* window)
 	if (parameter.Device == DeviceType::WebGPU)
 	{
 		auto platform = new PlatformWebGPU();
-		if (!platform->Initialize(window, parameter.WaitVSync))
+		if (!platform->Initialize(window, parameter.WaitVSync, parameter.IsPremultipliedAlphaEnabled))
 		{
 			SafeRelease(platform);
 			return nullptr;

@@ -49,6 +49,28 @@ wgpu::PresentMode SelectPresentMode(const wgpu::SurfaceCapabilities& capabilitie
 
 	return wgpu::PresentMode::Fifo;
 }
+
+wgpu::CompositeAlphaMode SelectCompositeAlphaMode(const wgpu::SurfaceCapabilities& capabilities, bool isPremultipliedAlphaEnabled)
+{
+	const auto preferred = isPremultipliedAlphaEnabled ? wgpu::CompositeAlphaMode::Premultiplied : wgpu::CompositeAlphaMode::Opaque;
+	for (size_t i = 0; i < capabilities.alphaModeCount; i++)
+	{
+		if (capabilities.alphaModes[i] == preferred)
+		{
+			return preferred;
+		}
+	}
+
+	for (size_t i = 0; i < capabilities.alphaModeCount; i++)
+	{
+		if (capabilities.alphaModes[i] == wgpu::CompositeAlphaMode::Auto)
+		{
+			return wgpu::CompositeAlphaMode::Auto;
+		}
+	}
+
+	return capabilities.alphaModeCount > 0 ? capabilities.alphaModes[0] : wgpu::CompositeAlphaMode::Auto;
+}
 } // namespace
 
 PlatformWebGPU::PlatformWebGPU(wgpu::Device device) : device_(device) {}
@@ -95,6 +117,7 @@ bool PlatformWebGPU::ConfigureSurface(const Vec2I& windowSize)
 
 	surfaceFormat_ = capabilities.formats[0];
 	presentMode_ = SelectPresentMode(capabilities, waitVSync_);
+	const auto alphaMode = SelectCompositeAlphaMode(capabilities, isPremultipliedAlphaEnabled_);
 
 	wgpu::SurfaceConfiguration config{};
 	config.device = device_;
@@ -102,6 +125,7 @@ bool PlatformWebGPU::ConfigureSurface(const Vec2I& windowSize)
 	config.width = static_cast<uint32_t>(windowSize.X);
 	config.height = static_cast<uint32_t>(windowSize.Y);
 	config.presentMode = presentMode_;
+	config.alphaMode = alphaMode;
 	config.usage = wgpu::TextureUsage::RenderAttachment | wgpu::TextureUsage::CopySrc | wgpu::TextureUsage::CopyDst;
 	surface_.Configure(&config);
 
@@ -109,10 +133,11 @@ bool PlatformWebGPU::ConfigureSurface(const Vec2I& windowSize)
 	return true;
 }
 
-bool PlatformWebGPU::Initialize(Window* window, bool waitVSync)
+bool PlatformWebGPU::Initialize(Window* window, bool waitVSync, bool isPremultipliedAlphaEnabled)
 {
 	waitVSync_ = waitVSync;
 	window_ = window;
+	isPremultipliedAlphaEnabled_ = isPremultipliedAlphaEnabled;
 #if !defined(__EMSCRIPTEN__)
 	if (window_ == nullptr)
 	{
@@ -250,11 +275,27 @@ bool PlatformWebGPU::Initialize(Window* window, bool waitVSync)
 #endif
 }
 
-bool PlatformWebGPU::Initialize(wgpu::Device device, bool waitVSync)
+bool PlatformWebGPU::Initialize(wgpu::Device device, bool waitVSync, bool isPremultipliedAlphaEnabled)
 {
 	waitVSync_ = waitVSync;
 	device_ = device;
+	isPremultipliedAlphaEnabled_ = isPremultipliedAlphaEnabled;
 	return device_ != nullptr;
+}
+
+void PlatformWebGPU::SetPremultipliedAlphaEnabled(bool isPremultipliedAlphaEnabled)
+{
+	if (isPremultipliedAlphaEnabled_ == isPremultipliedAlphaEnabled)
+	{
+		return;
+	}
+
+	isPremultipliedAlphaEnabled_ = isPremultipliedAlphaEnabled;
+	if (surface_ != nullptr && windowSize_.X > 0 && windowSize_.Y > 0)
+	{
+		ResetCurrentScreen();
+		ConfigureSurface(windowSize_);
+	}
 }
 
 int PlatformWebGPU::GetCurrentFrameIndex() const { return 0; }

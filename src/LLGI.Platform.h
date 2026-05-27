@@ -14,6 +14,7 @@ struct PlatformParameter
 {
 	DeviceType Device = DeviceType::Default;
 	bool WaitVSync = true;
+	bool IsPremultipliedAlphaEnabled = false;
 };
 
 Window* CreateWindow(const char* title, Vec2I windowSize);

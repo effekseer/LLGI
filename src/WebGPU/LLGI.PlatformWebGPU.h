@@ -25,6 +25,7 @@ private:
 	RenderPassWebGPU* currentScreenRenderPass_ = nullptr;
 	bool hasPresentedCurrentSurface_ = false;
 	bool isPresentRequested_ = false;
+	bool isPremultipliedAlphaEnabled_ = false;
 
 	bool ConfigureSurface(const Vec2I& windowSize);
 	bool AcquireCurrentScreen();
@@ -35,8 +36,9 @@ public:
 	explicit PlatformWebGPU(wgpu::Device device);
 	~PlatformWebGPU() override;
 
-	bool Initialize(Window* window, bool waitVSync);
-	bool Initialize(wgpu::Device device, bool waitVSync);
+	bool Initialize(Window* window, bool waitVSync, bool isPremultipliedAlphaEnabled = false);
+	bool Initialize(wgpu::Device device, bool waitVSync, bool isPremultipliedAlphaEnabled = false);
+	void SetPremultipliedAlphaEnabled(bool isPremultipliedAlphaEnabled);
 
 	int GetCurrentFrameIndex() const override;
 	int GetMaxFrameCount() const override;
