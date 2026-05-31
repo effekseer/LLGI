@@ -270,6 +270,7 @@ enum class TextureFormatType
 	D32,
 	D24S8,
 	D32S8,
+	RG11B10_UFLOAT,
 	Unknown,
 };
 
@@ -532,6 +533,8 @@ inline std::string to_string(TextureFormatType format)
 		return "D32S8";
 	case TextureFormatType::D24S8:
 		return "D24S8";
+	case TextureFormatType::RG11B10_UFLOAT:
+		return "RG11B10_UFLOAT";
 	default:
 		return "Unregistered";
 	}
@@ -574,6 +577,8 @@ inline int32_t GetTextureRowPitch(TextureFormatType format, Vec3I size)
 	case TextureFormatType::R8G8B8A8_UNORM:
 		return size.X * 4;
 	case TextureFormatType::B8G8R8A8_UNORM:
+		return size.X * 4;
+	case TextureFormatType::RG11B10_UFLOAT:
 		return size.X * 4;
 	case TextureFormatType::R16G16_FLOAT:
 		return size.X * 4;
