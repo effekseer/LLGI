@@ -192,6 +192,9 @@ wgpu::TextureFormat ConvertFormat(TextureFormatType format)
 	if (format == TextureFormatType::B8G8R8A8_UNORM)
 		return wgpu::TextureFormat::BGRA8Unorm;
 
+	if (format == TextureFormatType::RG11B10_UFLOAT)
+		return wgpu::TextureFormat::RG11B10Ufloat;
+
 	if (format == TextureFormatType::R16G16B16A16_FLOAT)
 		return wgpu::TextureFormat::RGBA16Float;
 
@@ -256,6 +259,9 @@ TextureFormatType ConvertFormat(wgpu::TextureFormat format)
 
 	if (format == wgpu::TextureFormat::BGRA8Unorm)
 		return TextureFormatType::B8G8R8A8_UNORM;
+
+	if (format == wgpu::TextureFormat::RG11B10Ufloat)
+		return TextureFormatType::RG11B10_UFLOAT;
 
 	if (format == wgpu::TextureFormat::RGBA16Float)
 		return TextureFormatType::R16G16B16A16_FLOAT;
