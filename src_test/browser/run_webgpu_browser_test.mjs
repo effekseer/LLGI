@@ -8,13 +8,21 @@ import {spawn} from 'node:child_process';
 
 const args = process.argv.slice(2);
 const htmlPath = args[0];
-const filterArg = args.find((arg) => arg.startsWith('--filter='));
-const filter = filterArg ? filterArg.substring('--filter='.length) : 'WebGPUBrowser.*';
+
+function optionValue(name) {
+	const prefix = `${name}=`;
+	const arg = args.find((value) => value.startsWith(prefix));
+	return arg ? arg.substring(prefix.length) : null;
+}
+
+const filter = optionValue('--filter') || 'WebGPUBrowser.*';
+const captureDirValue = optionValue('--capture-dir') || optionValue('--screenshot-dir');
+const captureDir = captureDirValue ? path.resolve(captureDirValue) : null;
 const useCrossOriginIsolation =
 	args.includes('--cross-origin-isolated') || process.env.LLGI_WEBGPU_CROSS_ORIGIN_ISOLATED === '1';
 
-if (!htmlPath) {
-	console.error('Usage: node run_webgpu_browser_test.mjs <LLGI_Test.html> [--filter=WebGPUBrowser.*]');
+if (!htmlPath || args.includes('--help')) {
+	console.error('Usage: node run_webgpu_browser_test.mjs <LLGI_Test.html> [--filter=WebGPUBrowser.*] [--capture-dir=path|--screenshot-dir=path] [--cross-origin-isolated]');
 	process.exit(2);
 }
 
@@ -27,6 +35,10 @@ if (!fs.existsSync(resolvedHtmlPath)) {
 const root = path.dirname(resolvedHtmlPath);
 const htmlFile = path.basename(resolvedHtmlPath);
 const executablePath = findBrowserExecutable();
+
+if (captureDir) {
+	fs.mkdirSync(captureDir, {recursive: true});
+}
 
 function findBrowserExecutable() {
 	const candidates = [
@@ -116,7 +128,11 @@ const server = http.createServer((request, response) => {
 
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 const {port} = server.address();
-const url = `http://127.0.0.1:${port}/${htmlFile}?filter=${encodeURIComponent(filter)}`;
+const url = new URL(`http://127.0.0.1:${port}/${htmlFile}`);
+url.searchParams.set('filter', filter);
+if (captureDir) {
+	url.searchParams.set('webgpu_capture', '1');
+}
 
 function delay(ms) {
 	return new Promise((resolve) => setTimeout(resolve, ms));
@@ -386,9 +402,116 @@ async function evaluateJson(client, expression) {
 	return result.result && result.result.value ? JSON.parse(result.result.value) : null;
 }
 
-async function waitForTestResult(client, timeoutMs) {
+function sanitizeCaptureName(name) {
+	const sanitized = String(name || '')
+		.replace(/[<>:"/\\|?*\x00-\x1F]+/g, '_')
+		.replace(/^\.+$/, '')
+		.trim();
+	return sanitized || 'webgpu_capture';
+}
+
+async function getCanvasScreenshotClip(client) {
+	const rect = await evaluateJson(client, `(() => {
+		const canvas = document.querySelector('canvas');
+		if (!canvas) {
+			return null;
+		}
+		const bounds = canvas.getBoundingClientRect();
+		return {
+			x: Math.max(0, bounds.x),
+			y: Math.max(0, bounds.y),
+			width: bounds.width,
+			height: bounds.height
+		};
+	})()`);
+
+	if (!rect || rect.width <= 0 || rect.height <= 0) {
+		throw new Error('Browser WebGPU canvas was not found or has an invalid size.');
+	}
+
+	return {...rect, scale: 1};
+}
+
+async function writeCanvasCaptureResult(client, requestId, status, message) {
+	await client.send('Runtime.evaluate', {
+		expression: `(() => {
+			const module = globalThis.Module;
+			if (!module) {
+				return;
+			}
+			module.llgiWebGPUCaptureResults = module.llgiWebGPUCaptureResults || {};
+			module.llgiWebGPUCaptureResults[${JSON.stringify(String(requestId))}] = {
+				status: ${JSON.stringify(status)},
+				message: ${JSON.stringify(message || '')}
+			};
+		})()`,
+		returnByValue: true,
+	});
+}
+
+async function captureCanvasToFile(client, outputPath) {
+	await client.send('Page.bringToFront');
+	const screenshot = await client.send('Page.captureScreenshot', {
+		format: 'png',
+		clip: await getCanvasScreenshotClip(client),
+		captureBeyondViewport: false,
+	}, 30000);
+	fs.writeFileSync(outputPath, Buffer.from(screenshot.data, 'base64'));
+}
+
+async function readCanvasCaptureRequests(client) {
+	return await evaluateJson(client, `(() => {
+		const module = globalThis.Module;
+		if (!module || !Array.isArray(module.llgiWebGPUCaptureRequests)) {
+			return [];
+		}
+
+		return module.llgiWebGPUCaptureRequests
+			.filter((request) => request)
+			.map((request) => {
+				return {
+					id: String(request.id || ''),
+					name: String(request.name || '')
+				};
+			});
+	})()`);
+}
+
+async function processCanvasCaptureRequests(client, processedRequestIds) {
+	if (!captureDir) {
+		return;
+	}
+
+	const requests = await readCanvasCaptureRequests(client);
+	for (const request of requests || []) {
+		if (!request.id || processedRequestIds.has(request.id)) {
+			continue;
+		}
+
+		processedRequestIds.add(request.id);
+		let captureName = sanitizeCaptureName(request.name);
+		if (!captureName.toLowerCase().endsWith('.png')) {
+			captureName += '.png';
+		}
+
+		const outputPath = path.join(captureDir, captureName);
+		try {
+			await captureCanvasToFile(client, outputPath);
+			console.log(`[capture] ${outputPath}`);
+			await writeCanvasCaptureResult(client, request.id, 'passed', outputPath);
+		} catch (error) {
+			await writeCanvasCaptureResult(client, request.id, 'failed', error.message);
+			throw error;
+		}
+	}
+}
+
+async function waitForTestResult(client, timeoutMs, onPoll) {
 	const start = Date.now();
 	while (Date.now() - start < timeoutMs) {
+		if (onPoll) {
+			await onPoll();
+		}
 		const value = await evaluateJson(client, 'globalThis.Module && globalThis.Module.llgiTestResult || null');
 		if (value) {
 			return value;
@@ -443,8 +566,10 @@ try {
 
 	await client.send('Runtime.enable');
 	await client.send('Page.enable');
-	await client.send('Page.navigate', {url});
-	const value = await waitForTestResult(client, 60000);
+	await client.send('Page.navigate', {url: url.toString()});
+	const processedCaptureRequestIds = new Set();
+	const value = await waitForTestResult(client, 60000, () => processCanvasCaptureRequests(client, processedCaptureRequestIds));
+	await processCanvasCaptureRequests(client, processedCaptureRequestIds);
 	if (!value || value.status !== 'passed') {
 		console.error(value && value.message ? value.message : 'LLGI browser WebGPU test failed.');
 		process.exitCode = 1;
