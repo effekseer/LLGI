@@ -407,15 +407,14 @@ void CommandListVulkan::EndWithPlatform()
 
 bool CommandListVulkan::BeginRenderPassWithPlatformPtr(void* platformPtr)
 {
-	isInRenderPass_ = true;
 	isInValidRenderPass_ = true;
-	return true;
+	return CommandList::BeginRenderPassWithPlatformPtr(platformPtr);
 }
 
 bool CommandListVulkan::EndRenderPassWithPlatformPtr()
 {
-	isInRenderPass_ = false;
 	isInValidRenderPass_ = false;
+	CommandList::EndRenderPass();
 	return true;
 }
 
