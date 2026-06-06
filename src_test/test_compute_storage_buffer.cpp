@@ -798,13 +798,13 @@ void test_compute_shader_storage_buffer_rebind_same_slot(LLGI::DeviceType device
 	graphics->Execute(commandList);
 	graphics->WaitFinish();
 
-	auto verify = [dataSize](const SlotTransitionData* result, const char* label) {
+	auto verify = [](const SlotTransitionData* result, const char* label, int count) {
 		if (result == nullptr)
 		{
 			abort();
 		}
 
-		for (int i = 0; i < dataSize; i++)
+		for (int i = 0; i < count; i++)
 		{
 			const float x = i * 2.0f + 0.25f;
 			const float y = i * -3.0f + 0.5f;
@@ -823,8 +823,8 @@ void test_compute_shader_storage_buffer_rebind_same_slot(LLGI::DeviceType device
 
 	auto resultA = static_cast<const SlotTransitionData*>(readbackA->Lock());
 	auto resultB = static_cast<const SlotTransitionData*>(readbackB->Lock());
-	verify(resultA, "A");
-	verify(resultB, "B");
+	verify(resultA, "A", dataSize);
+	verify(resultB, "B", dataSize);
 	readbackA->Unlock();
 	readbackB->Unlock();
 	platform->Present();
