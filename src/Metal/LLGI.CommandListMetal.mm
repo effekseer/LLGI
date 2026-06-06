@@ -16,6 +16,26 @@ namespace LLGI
 namespace
 {
 static constexpr uint32_t InitialVisibilityResultBufferCount = 1024;
+
+id<MTLTexture> CreateFallbackSampledTexture(id<MTLDevice> device)
+{
+	MTLTextureDescriptor* textureDescriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+																								  width:1
+																								 height:1
+																							  mipmapped:NO];
+	textureDescriptor.usage = MTLTextureUsageShaderRead;
+
+	auto texture = [device newTextureWithDescriptor:textureDescriptor];
+	if (texture == nullptr)
+	{
+		return nullptr;
+	}
+
+	uint8_t textureData[4] = {255, 255, 255, 255};
+	MTLRegion region = MTLRegionMake2D(0, 0, 1, 1);
+	[texture replaceRegion:region mipmapLevel:0 withBytes:textureData bytesPerRow:4];
+	return texture;
+}
 }
 
 bool CommandListMetal::EnsureVisibilityResultBuffer(uint32_t queryCount)
@@ -84,6 +104,7 @@ CommandListMetal::CommandListMetal(Graphics* graphics)
 	}
 
 	fence_ = [g->GetDevice() newFence];
+	fallbackSampledTexture_ = CreateFallbackSampledTexture(g->GetDevice());
 }
 
 CommandListMetal::~CommandListMetal()
@@ -132,6 +153,12 @@ CommandListMetal::~CommandListMetal()
 	{
 		[visibilityResultBuffer_ release];
 		visibilityResultBuffer_ = nullptr;
+	}
+
+	if (fallbackSampledTexture_ != nullptr)
+	{
+		[fallbackSampledTexture_ release];
+		fallbackSampledTexture_ = nullptr;
 	}
 
 	SafeRelease(graphics_);
@@ -231,21 +258,21 @@ void CommandListMetal::Draw(int32_t primitiveCount, int32_t instanceCount)
     // Assign textures
     for (int unit_ind = 0; unit_ind < currentTextures_.size(); unit_ind++)
     {
-        if (currentTextures_[unit_ind].texture == nullptr)
-            continue;
-
         auto texture = (TextureMetal*)currentTextures_[unit_ind].texture;
+        auto nativeTexture = texture != nullptr ? texture->GetTexture() : fallbackSampledTexture_;
+        if (nativeTexture == nullptr)
+            continue;
         auto wm = (int32_t)currentTextures_[unit_ind].wrapMode;
         auto mm = (int32_t)currentTextures_[unit_ind].minMagFilter;
         auto pm = 0;
-        if (texture->GetTexture().mipmapLevelCount >= 2)
+        if (nativeTexture.mipmapLevelCount >= 2)
         {
             pm = mipmapFilter;
         }
         
-        [renderEncoder_ setVertexTexture:texture->GetTexture() atIndex:unit_ind];
+        [renderEncoder_ setVertexTexture:nativeTexture atIndex:unit_ind];
         [renderEncoder_ setVertexSamplerState:samplerStates_[wm][mm][pm] atIndex:unit_ind];
-        [renderEncoder_ setFragmentTexture:texture->GetTexture() atIndex:unit_ind];
+        [renderEncoder_ setFragmentTexture:nativeTexture atIndex:unit_ind];
         [renderEncoder_ setFragmentSamplerState:samplerStates_[wm][mm][pm] atIndex:unit_ind];
     }
 	
@@ -579,19 +606,19 @@ void CommandListMetal::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ, 
 	// Assign textures
     for (int unit_ind = 0; unit_ind < currentTextures_.size(); unit_ind++)
     {
-        if (currentTextures_[unit_ind].texture == nullptr)
-            continue;
-
         auto texture = (TextureMetal*)currentTextures_[unit_ind].texture;
+        auto nativeTexture = texture != nullptr ? texture->GetTexture() : fallbackSampledTexture_;
+        if (nativeTexture == nullptr)
+            continue;
         auto wm = (int32_t)currentTextures_[unit_ind].wrapMode;
         auto mm = (int32_t)currentTextures_[unit_ind].minMagFilter;
         auto pm = 0;
-        if (texture->GetTexture().mipmapLevelCount >= 2)
+        if (nativeTexture.mipmapLevelCount >= 2)
         {
             pm = mipmapFilter;
         }
         
-        [computeEncoder_ setTexture:texture->GetTexture() atIndex:unit_ind];
+        [computeEncoder_ setTexture:nativeTexture atIndex:unit_ind];
         [computeEncoder_ setSamplerState:samplerStates_[wm][mm][pm] atIndex:unit_ind];
     }
 

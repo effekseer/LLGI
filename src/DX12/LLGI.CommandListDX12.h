@@ -38,6 +38,7 @@ private:
 
 	std::shared_ptr<GraphicsDX12> graphics_;
 	std::shared_ptr<RenderPassDX12> renderPass_;
+	TextureDX12* fallbackSampledTexture_ = nullptr;
 
 	ID3D12GraphicsCommandList* currentCommandList_ = nullptr;
 	ID3D12RootSignature* mipmapRootSignature_ = nullptr;
@@ -51,10 +52,12 @@ private:
 	bool ShouldBindStorageBufferAsUAV(const PipelineStateDX12* pipeline, const BindingStorageBuffer& buffer, int32_t unit) const;
 	bool ValidateStorageBufferView(const BindingStorageBuffer& buffer, bool isRawBuffer, int32_t unit) const;
 	bool CreateStorageBufferSRV(const BindingStorageBuffer& buffer, bool isRawBuffer, int32_t unit, D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle);
+	bool CreateFallbackSampledTexture();
+	bool CreateSampledTextureSRV(TextureDX12* texture, D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle);
 	bool CreateStorageBufferUAV(const BindingStorageBuffer& buffer, bool isRawBuffer, int32_t unit, D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle);
 	bool CreateMipmapRootSignature();
 	ID3D12PipelineState* GetMipmapPipelineState(DXGI_FORMAT format);
-	
+
 	void BeginInternal();
 
 public:

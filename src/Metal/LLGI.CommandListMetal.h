@@ -35,6 +35,7 @@ class CommandListMetal : public CommandList
 	id<MTLRenderCommandEncoder> renderEncoder_ = nullptr;
 	id<MTLComputeCommandEncoder> computeEncoder_ = nullptr;
 	id<MTLFence> fence_ = nullptr;
+	id<MTLTexture> fallbackSampledTexture_ = nullptr;
 	id<MTLBuffer> visibilityResultBuffer_ = nullptr;
 	uint32_t visibilityResultBufferCount_ = 0;
 	uint32_t visibilityResultOffset_ = 0;

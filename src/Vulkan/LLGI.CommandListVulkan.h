@@ -34,6 +34,8 @@ struct PlatformContextVulkan
 	VkCommandBuffer commandBuffer;
 };
 
+class TextureVulkan;
+
 class CommandListVulkan : public CommandList
 {
 private:
@@ -44,6 +46,7 @@ private:
 	int32_t currentSwapBufferIndex_;
 	std::vector<vk::Fence> fences_;
 	vk::Sampler samplers_[3][2];
+	TextureVulkan* fallbackSampledTexture_ = nullptr;
 
 	RenderPassVulkan* renderPass_ = nullptr;
 	bool isInValidRenderPass_ = false;
@@ -68,6 +71,7 @@ private:
 									 const std::function<bool(TextureUsageType)>& filter);
 
 	void PrepareStorageBuffersForGraphics();
+	bool CreateFallbackSampledTexture();
 
 public:
 	CommandListVulkan() = default;

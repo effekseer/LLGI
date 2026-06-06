@@ -361,6 +361,45 @@ bool CommandListDX12::CreateStorageBufferSRV(
 	return true;
 }
 
+bool CommandListDX12::CreateFallbackSampledTexture()
+{
+	TextureParameter fallbackTextureParameter;
+	auto fallbackTexture = static_cast<TextureDX12*>(graphics_->CreateTexture(fallbackTextureParameter));
+	if (fallbackTexture == nullptr)
+	{
+		return false;
+	}
+
+	auto fallbackTextureData = static_cast<uint8_t*>(fallbackTexture->Lock());
+	if (fallbackTextureData == nullptr)
+	{
+		SafeRelease(fallbackTexture);
+		return false;
+	}
+
+	fallbackTextureData[0] = 255;
+	fallbackTextureData[1] = 255;
+	fallbackTextureData[2] = 255;
+	fallbackTextureData[3] = 255;
+	fallbackTexture->Unlock();
+
+	fallbackSampledTexture_ = fallbackTexture;
+	return true;
+}
+
+bool CommandListDX12::CreateSampledTextureSRV(TextureDX12* texture, D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle)
+{
+	auto sourceTexture = texture != nullptr ? texture : fallbackSampledTexture_;
+	if (sourceTexture == nullptr)
+	{
+		return false;
+	}
+
+	const auto srvDesc = GetSRVDescFromTexture(sourceTexture);
+	graphics_->GetDevice()->CreateShaderResourceView(sourceTexture->Get(), &srvDesc, cpuHandle);
+	return true;
+}
+
 bool CommandListDX12::CreateStorageBufferUAV(
 	const CommandList::BindingStorageBuffer& buffer, bool isRawBuffer, int32_t unit, D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle)
 {
@@ -405,6 +444,7 @@ CommandListDX12::CommandListDX12()
 
 CommandListDX12::~CommandListDX12()
 {
+	SafeRelease(fallbackSampledTexture_);
 	SafeRelease(fence_);
 	SafeRelease(mipmapRootSignature_);
 	for (auto& pipelineState : mipmapPipelineStates_)
@@ -469,6 +509,11 @@ bool CommandListDX12::Initialize(GraphicsDX12* graphics, int32_t drawingCount)
 
 	computeDescriptorHeap_ =
 		std::make_shared<DX12::DescriptorHeapAllocator>(graphics_, D3D12_DESCRIPTOR_HEAP_TYPE::D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+	if (!CreateFallbackSampledTexture())
+	{
+		goto FAILED_EXIT;
+	}
 
 	hr = graphics_->GetDevice()->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence_));
 	if (FAILED(hr))
@@ -688,16 +733,8 @@ void CommandListDX12::Draw(int32_t primitiveCount, int32_t instanceCount)
 
 	// count descriptor
 	int32_t requiredCBDescriptorCount = NumConstantBuffer + NumTexture;
-	int32_t requiredSamplerDescriptorCount = 1;
+	int32_t requiredSamplerDescriptorCount = NumTexture;
 	int32_t requiredStorageDescriptorCount = 0;
-
-	for (size_t unit_ind = 0; unit_ind < currentTextures_.size(); unit_ind++)
-	{
-		if (currentTextures_[unit_ind].texture != nullptr)
-		{
-			requiredSamplerDescriptorCount = std::max(requiredSamplerDescriptorCount, static_cast<int32_t>(unit_ind) + 1);
-		}
-	}
 
 	for (size_t unit_ind = 0; unit_ind < NumStorageBuffer; unit_ind++)
 	{
@@ -772,6 +809,7 @@ void CommandListDX12::Draw(int32_t primitiveCount, int32_t instanceCount)
 	{
 		for (size_t unit_ind = 0; unit_ind < currentTextures_.size(); unit_ind++)
 		{
+			auto srvCpuHandle = cpuDescriptorHandleConstant[NumConstantBuffer + static_cast<int32_t>(unit_ind)];
 			if (currentTextures_[unit_ind].texture != nullptr)
 			{
 				auto texture = static_cast<TextureDX12*>(currentTextures_[unit_ind].texture);
@@ -783,18 +821,9 @@ void CommandListDX12::Draw(int32_t primitiveCount, int32_t instanceCount)
 											 D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 				}
 
-				// SRV
+				if (!CreateSampledTextureSRV(texture, srvCpuHandle))
 				{
-					D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = GetSRVDescFromTexture(texture);
-					auto cpuHandle = cpuDescriptorHandleConstant[NumConstantBuffer + static_cast<int32_t>(unit_ind)];
-					graphics_->GetDevice()->CreateShaderResourceView(texture->Get(), &srvDesc, cpuHandle);
-				}
-
-				// Sampler
-				{
-					D3D12_SAMPLER_DESC samplerDesc = GeSamplerDescFromBindingTexture(currentTextures_[unit_ind]);
-					auto cpuHandle = cpuDescriptorHandleSampler[unit_ind];
-					graphics_->GetDevice()->CreateSampler(&samplerDesc, cpuHandle);
+					return;
 				}
 			}
 			else if (unit_ind < NumStorageBuffer &&
@@ -803,12 +832,22 @@ void CommandListDX12::Draw(int32_t primitiveCount, int32_t instanceCount)
 				BindingStorageBuffer storage = storageBuffers_[unit_ind];
 				const bool isRawBuffer = pip->RequiresRawSRV(static_cast<int32_t>(unit_ind)) ||
 										 storage.binding.StorageBufferView == StorageBufferViewType::Raw;
-				auto cpuHandle = cpuDescriptorHandleConstant[NumConstantBuffer + static_cast<int32_t>(unit_ind)];
-				if (!CreateStorageBufferSRV(storage, isRawBuffer, static_cast<int32_t>(unit_ind), cpuHandle))
+				if (!CreateStorageBufferSRV(storage, isRawBuffer, static_cast<int32_t>(unit_ind), srvCpuHandle))
 				{
 					return;
 				}
 			}
+			else
+			{
+				if (!CreateSampledTextureSRV(nullptr, srvCpuHandle))
+				{
+					return;
+				}
+			}
+
+			D3D12_SAMPLER_DESC samplerDesc = GeSamplerDescFromBindingTexture(currentTextures_[unit_ind]);
+			auto samplerCpuHandle = cpuDescriptorHandleSampler[unit_ind];
+			graphics_->GetDevice()->CreateSampler(&samplerDesc, samplerCpuHandle);
 		}
 
 		// UAV
@@ -1153,21 +1192,7 @@ void CommandListDX12::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ, i
 	// SRV
 	for (size_t unit_ind = 0; unit_ind < currentTextures_.size(); unit_ind++)
 	{
-		if (unit_ind < NumStorageBuffer &&
-			ShouldBindStorageBufferAsSRV(pip, storageBuffers_[unit_ind], static_cast<int32_t>(unit_ind)))
-		{
-			BindingStorageBuffer storage = storageBuffers_[unit_ind];
-
-			const bool isRawBuffer = pip->RequiresRawSRV(static_cast<int32_t>(unit_ind)) ||
-									 storage.binding.StorageBufferView == StorageBufferViewType::Raw;
-			auto cpuHandle = cpuDescriptorHandleConstant[NumConstantBuffer + static_cast<int32_t>(unit_ind)];
-			if (!CreateStorageBufferSRV(storage, isRawBuffer, static_cast<int32_t>(unit_ind), cpuHandle))
-			{
-				return;
-			}
-		}
-
-		// textures
+		auto srvCpuHandle = cpuDescriptorHandleConstant[NumConstantBuffer + static_cast<int32_t>(unit_ind)];
 		if (currentTextures_[unit_ind].texture != nullptr &&
 			!BitwiseContains(currentTextures_[unit_ind].texture->GetUsage(), TextureUsageType::Storage))
 		{
@@ -1180,20 +1205,31 @@ void CommandListDX12::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ, i
 										 D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 			}
 
-			// SRV
+			if (!CreateSampledTextureSRV(texture, srvCpuHandle))
 			{
-				D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = GetSRVDescFromTexture(texture);
-				auto cpuHandle = cpuDescriptorHandleConstant[NumConstantBuffer + static_cast<int32_t>(unit_ind)];
-				graphics_->GetDevice()->CreateShaderResourceView(texture->Get(), &srvDesc, cpuHandle);
-			}
-
-			// Sampler
-			{
-				D3D12_SAMPLER_DESC samplerDesc = GeSamplerDescFromBindingTexture(currentTextures_[unit_ind]);
-				auto cpuHandle = cpuDescriptorHandleSampler[unit_ind];
-				graphics_->GetDevice()->CreateSampler(&samplerDesc, cpuHandle);
+				return;
 			}
 		}
+		else if (unit_ind < NumStorageBuffer &&
+				 ShouldBindStorageBufferAsSRV(pip, storageBuffers_[unit_ind], static_cast<int32_t>(unit_ind)))
+		{
+			BindingStorageBuffer storage = storageBuffers_[unit_ind];
+
+			const bool isRawBuffer = pip->RequiresRawSRV(static_cast<int32_t>(unit_ind)) ||
+									 storage.binding.StorageBufferView == StorageBufferViewType::Raw;
+			if (!CreateStorageBufferSRV(storage, isRawBuffer, static_cast<int32_t>(unit_ind), srvCpuHandle))
+			{
+				return;
+			}
+		}
+		else if (!CreateSampledTextureSRV(nullptr, srvCpuHandle))
+		{
+			return;
+		}
+
+		D3D12_SAMPLER_DESC samplerDesc = GeSamplerDescFromBindingTexture(currentTextures_[unit_ind]);
+		auto samplerCpuHandle = cpuDescriptorHandleSampler[unit_ind];
+		graphics_->GetDevice()->CreateSampler(&samplerDesc, samplerCpuHandle);
 	}
 
 	// UAV

@@ -202,12 +202,23 @@ void CommandListVulkan::AssignTexturesToCommandList(const vk::DescriptorSet& des
 {
 	for (int32_t unit_ind = 0; unit_ind < static_cast<int32_t>(currentTextures_.size()); unit_ind++)
 	{
-		if (currentTextures_[unit_ind].texture == nullptr || !filter(currentTextures_[unit_ind].texture->GetUsage()))
+		auto texture = static_cast<TextureVulkan*>(currentTextures_[unit_ind].texture);
+		const auto usage = texture != nullptr ? texture->GetUsage() : TextureUsageType::NoneFlag;
+		if (!filter(usage))
 		{
 			continue;
 		}
 
-		auto texture = (TextureVulkan*)currentTextures_[unit_ind].texture;
+		if (texture == nullptr)
+		{
+			texture = fallbackSampledTexture_;
+		}
+
+		if (texture == nullptr)
+		{
+			continue;
+		}
+
 		auto wm = (int32_t)currentTextures_[unit_ind].wrapMode;
 		auto mm = (int32_t)currentTextures_[unit_ind].minMagFilter;
 		vk::DescriptorImageInfo imageInfo;
@@ -286,6 +297,34 @@ CommandListVulkan::~CommandListVulkan()
 			}
 		}
 	}
+
+	SafeRelease(fallbackSampledTexture_);
+}
+
+bool CommandListVulkan::CreateFallbackSampledTexture()
+{
+	TextureParameter fallbackTextureParameter;
+	auto fallbackTexture = static_cast<TextureVulkan*>(graphics_->CreateTexture(fallbackTextureParameter));
+	if (fallbackTexture == nullptr)
+	{
+		return false;
+	}
+
+	auto fallbackTextureData = static_cast<uint8_t*>(fallbackTexture->Lock());
+	if (fallbackTextureData == nullptr)
+	{
+		SafeRelease(fallbackTexture);
+		return false;
+	}
+
+	fallbackTextureData[0] = 255;
+	fallbackTextureData[1] = 255;
+	fallbackTextureData[2] = 255;
+	fallbackTextureData[3] = 255;
+	fallbackTexture->Unlock();
+
+	fallbackSampledTexture_ = fallbackTexture;
+	return true;
 }
 
 bool CommandListVulkan::Initialize(GraphicsVulkan* graphics, int32_t drawingCount)
@@ -340,6 +379,11 @@ bool CommandListVulkan::Initialize(GraphicsVulkan* graphics, int32_t drawingCoun
 
 			samplers_[w][f] = graphics_->GetDevice().createSampler(samplerInfo);
 		}
+	}
+
+	if (!CreateFallbackSampledTexture())
+	{
+		return false;
 	}
 
 	currentSwapBufferIndex_ = -1;
