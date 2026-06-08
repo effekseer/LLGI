@@ -837,7 +837,7 @@ void CommandListDX12::Draw(int32_t primitiveCount, int32_t instanceCount)
 					return;
 				}
 			}
-			else
+			else if (currentTextures_[unit_ind].isBound)
 			{
 				if (!CreateSampledTextureSRV(nullptr, srvCpuHandle))
 				{
@@ -845,9 +845,12 @@ void CommandListDX12::Draw(int32_t primitiveCount, int32_t instanceCount)
 				}
 			}
 
-			D3D12_SAMPLER_DESC samplerDesc = GeSamplerDescFromBindingTexture(currentTextures_[unit_ind]);
-			auto samplerCpuHandle = cpuDescriptorHandleSampler[unit_ind];
-			graphics_->GetDevice()->CreateSampler(&samplerDesc, samplerCpuHandle);
+			if (currentTextures_[unit_ind].isBound)
+			{
+				D3D12_SAMPLER_DESC samplerDesc = GeSamplerDescFromBindingTexture(currentTextures_[unit_ind]);
+				auto samplerCpuHandle = cpuDescriptorHandleSampler[unit_ind];
+				graphics_->GetDevice()->CreateSampler(&samplerDesc, samplerCpuHandle);
+			}
 		}
 
 		// UAV
@@ -1222,14 +1225,17 @@ void CommandListDX12::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ, i
 				return;
 			}
 		}
-		else if (!CreateSampledTextureSRV(nullptr, srvCpuHandle))
+		else if (currentTextures_[unit_ind].isBound && !CreateSampledTextureSRV(nullptr, srvCpuHandle))
 		{
 			return;
 		}
 
-		D3D12_SAMPLER_DESC samplerDesc = GeSamplerDescFromBindingTexture(currentTextures_[unit_ind]);
-		auto samplerCpuHandle = cpuDescriptorHandleSampler[unit_ind];
-		graphics_->GetDevice()->CreateSampler(&samplerDesc, samplerCpuHandle);
+		if (currentTextures_[unit_ind].isBound)
+		{
+			D3D12_SAMPLER_DESC samplerDesc = GeSamplerDescFromBindingTexture(currentTextures_[unit_ind]);
+			auto samplerCpuHandle = cpuDescriptorHandleSampler[unit_ind];
+			graphics_->GetDevice()->CreateSampler(&samplerDesc, samplerCpuHandle);
+		}
 	}
 
 	// UAV

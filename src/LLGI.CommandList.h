@@ -46,6 +46,7 @@ protected:
 		Texture* texture = nullptr;
 		TextureWrapMode wrapMode = TextureWrapMode::Clamp;
 		TextureMinMagFilter minMagFilter = TextureMinMagFilter::Nearest;
+		bool isBound = false;
 	};
 
 	struct BindingStorageBuffer

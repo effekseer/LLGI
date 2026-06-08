@@ -49,6 +49,7 @@ CommandList::CommandList(int32_t swapCount) : swapCount_(swapCount)
 	for (auto& t : currentTextures_)
 	{
 		t.texture = nullptr;
+		t.isBound = false;
 	}
 
 	swapObjects.resize(swapCount_);
@@ -232,6 +233,7 @@ void CommandList::SetTexture(Texture* texture, TextureWrapMode wrapMode, Texture
 	SafeAssign(currentTextures_[unit].texture, texture);
 	currentTextures_[unit].wrapMode = wrapMode;
 	currentTextures_[unit].minMagFilter = minmagFilter;
+	currentTextures_[unit].isBound = true;
 
 	RegisterReferencedObject(texture);
 }
@@ -243,6 +245,7 @@ void CommandList::ResetTextures()
 		SafeRelease(texture.texture);
 		texture.wrapMode = TextureWrapMode::Clamp;
 		texture.minMagFilter = TextureMinMagFilter::Nearest;
+		texture.isBound = false;
 	}
 }
 
