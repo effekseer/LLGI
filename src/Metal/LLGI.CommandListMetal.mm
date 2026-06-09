@@ -422,7 +422,7 @@ void CommandListMetal::BeginRenderPass(RenderPass* renderPass)
 			}
 			else
 			{
-				rpd.colorAttachments[i].loadAction = MTLLoadActionDontCare;
+				rpd.colorAttachments[i].loadAction = MTLLoadActionLoad;
 			}
 		}
 
@@ -443,8 +443,8 @@ void CommandListMetal::BeginRenderPass(RenderPass* renderPass)
 		}
 		else
 		{
-			rpd.depthAttachment.loadAction = MTLLoadActionDontCare;
-			rpd.stencilAttachment.loadAction = MTLLoadActionDontCare;
+			rpd.depthAttachment.loadAction = MTLLoadActionLoad;
+			rpd.stencilAttachment.loadAction = MTLLoadActionLoad;
 		}
 
 		renderEncoder_ = [commandBuffer_ renderCommandEncoderWithDescriptor:rpd];
