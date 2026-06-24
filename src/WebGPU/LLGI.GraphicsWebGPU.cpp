@@ -262,6 +262,7 @@ Texture* GraphicsWebGPU::CreateTexture(const TextureInitializationParameter& par
 	param.Dimension = 2;
 	param.Format = parameter.Format;
 	param.MipLevelCount = parameter.MipMapCount;
+	param.IsMipmapGenerationEnabled = parameter.MipMapCount > 1;
 	param.SampleCount = 1;
 	param.Size = {parameter.Size.X, parameter.Size.Y, 1};
 	return CreateTexture(param);

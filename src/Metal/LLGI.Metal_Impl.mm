@@ -26,6 +26,10 @@ MTLPixelFormat ConvertFormat(TextureFormatType format)
 	{
 		return MTLPixelFormatBGRA8Unorm;
 	}
+	else if (format == TextureFormatType::RG11B10_UFLOAT)
+	{
+		return MTLPixelFormatRG11B10Float;
+	}
 	else if (format == TextureFormatType::R8_UNORM)
 	{
 		return MTLPixelFormatR8Unorm;
@@ -121,6 +125,10 @@ TextureFormatType ConvertFormat(MTLPixelFormat format)
 	else if (format == MTLPixelFormatBGRA8Unorm)
 	{
 		return TextureFormatType::B8G8R8A8_UNORM;
+	}
+	else if (format == MTLPixelFormatRG11B10Float)
+	{
+		return TextureFormatType::RG11B10_UFLOAT;
 	}
 	else if (format == MTLPixelFormatR8Unorm)
 	{

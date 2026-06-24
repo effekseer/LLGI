@@ -61,6 +61,7 @@ struct FormatConversionItem
 static FormatConversionItem s_formatConversionTable[] = {
 	{TextureFormatType::R8G8B8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM},
 	{TextureFormatType::B8G8R8A8_UNORM, VK_FORMAT_B8G8R8A8_UNORM},
+	{TextureFormatType::RG11B10_UFLOAT, VK_FORMAT_B10G11R11_UFLOAT_PACK32},
 	{TextureFormatType::R8_UNORM, VK_FORMAT_R8_UNORM},
 	{TextureFormatType::R16_FLOAT, VK_FORMAT_R16_SFLOAT},
 	{TextureFormatType::R32_FLOAT, VK_FORMAT_R32_SFLOAT},

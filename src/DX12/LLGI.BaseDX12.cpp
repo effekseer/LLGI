@@ -147,6 +147,9 @@ DXGI_FORMAT ConvertFormat(TextureFormatType format)
 	if (format == TextureFormatType::R8G8B8A8_UNORM)
 		return DXGI_FORMAT_R8G8B8A8_UNORM;
 
+	if (format == TextureFormatType::RG11B10_UFLOAT)
+		return DXGI_FORMAT_R11G11B10_FLOAT;
+
 	if (format == TextureFormatType::R16G16B16A16_FLOAT)
 		return DXGI_FORMAT_R16G16B16A16_FLOAT;
 
@@ -214,6 +217,9 @@ TextureFormatType ConvertFormat(DXGI_FORMAT format)
 {
 	if (format == DXGI_FORMAT_R8G8B8A8_UNORM)
 		return TextureFormatType::R8G8B8A8_UNORM;
+
+	if (format == DXGI_FORMAT_R11G11B10_FLOAT)
+		return TextureFormatType::RG11B10_UFLOAT;
 
 	if (format == DXGI_FORMAT_R16G16B16A16_FLOAT)
 		return TextureFormatType::R16G16B16A16_FLOAT;

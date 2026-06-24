@@ -18,6 +18,7 @@ struct TextureParameter
 	Vec3I Size = Vec3I{1, 1, 1};
 	int32_t MipLevelCount = 1;
 	int SampleCount = 1;
+	bool IsMipmapGenerationEnabled = false;
 };
 
 struct TextureInitializationParameter

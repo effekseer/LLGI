@@ -37,8 +37,6 @@ public:
 	void GenerateMipMaps(wgpu::CommandEncoder& commandEncoder);
 	bool GetData(std::vector<uint8_t>& data) override;
 	Vec2I GetSizeAs2D() const override;
-	bool IsRenderTexture() const override;
-	bool IsDepthTexture() const override;
 
 	const TextureParameter& GetParameter() const { return parameter_; }
 

@@ -62,7 +62,12 @@ struct MipmapSize
 
 bool CanGenerateMipMaps(const TextureParameter& parameter)
 {
-	return parameter.MipLevelCount > 1 && parameter.Dimension == 2 && parameter.Size.Z == 1 && !IsDepthFormat(parameter.Format) &&
+	return parameter.IsMipmapGenerationEnabled &&
+		   parameter.MipLevelCount > 1 &&
+		   parameter.Dimension == 2 &&
+		   parameter.Size.Z == 1 &&
+		   !IsBlockCompressedFormat(parameter.Format) &&
+		   !IsDepthFormat(parameter.Format) &&
 		   parameter.SampleCount == 1;
 }
 
@@ -457,14 +462,22 @@ bool TextureWebGPU::InitializeFromSurfaceTexture(wgpu::Device& device, wgpu::Tex
 
 void* TextureWebGPU::Lock()
 {
-	auto cpuMemorySize = GetTextureMemorySize(format_, parameter_.Size);
+	const auto preserveDepth = (parameter_.Usage & TextureUsageType::Array) != TextureUsageType::NoneFlag;
+	auto cpuMemorySize = GetTextureMemorySize(format_, parameter_.Size, parameter_.MipLevelCount, preserveDepth);
 	temp_buffer_.resize(cpuMemorySize);
 	return temp_buffer_.data();
 }
 
 void TextureWebGPU::Unlock()
 {
-	WriteTextureMipLevel(device_, texture_, format_, 0, parameter_.Size, temp_buffer_.data());
+	const auto preserveDepth = (parameter_.Usage & TextureUsageType::Array) != TextureUsageType::NoneFlag;
+	size_t offset = 0;
+	for (int32_t mipLevel = 0; mipLevel < parameter_.MipLevelCount; mipLevel++)
+	{
+		auto mipSize = GetTextureMipSize(parameter_.Size, mipLevel, preserveDepth);
+		WriteTextureMipLevel(device_, texture_, format_, mipLevel, mipSize, temp_buffer_.data() + offset);
+		offset += GetTextureMemorySize(format_, mipSize);
+	}
 	mipmapsGeneratedFromLockedData_ = false;
 
 	if (CanGenerateMipMaps(parameter_))
@@ -654,12 +667,5 @@ bool TextureWebGPU::GetData(std::vector<uint8_t>& data)
 }
 
 Vec2I TextureWebGPU::GetSizeAs2D() const { return Vec2I(parameter_.Size.X, parameter_.Size.Y); }
-
-bool TextureWebGPU::IsRenderTexture() const
-{
-	return type_ == TextureType::Render || type_ == TextureType::Screen;
-}
-
-bool TextureWebGPU::IsDepthTexture() const { return type_ == TextureType::Depth; }
 
 } // namespace LLGI

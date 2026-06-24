@@ -1,5 +1,6 @@
 
 #include "TestHelper.h"
+#include "TextureDataGenerator.h"
 #include "test.h"
 
 #include <Utils/LLGI.CommandListPool.h>
@@ -37,8 +38,8 @@ void test_mipmap(LLGI::DeviceType deviceType)
 	assert(textureDrawn->GetType() == LLGI::TextureType::Color);
 	assert(textureDrawnMipmap->GetType() == LLGI::TextureType::Color);
 
-	TestHelper::WriteDummyTexture(textureDrawn);
-	TestHelper::WriteDummyTexture(textureDrawnMipmap);
+	TextureDataGenerator::WriteDummyTexture(textureDrawn);
+	TextureDataGenerator::WriteDummyTexture(textureDrawnMipmap);
 
 	LLGI::Shader* shader_vs = nullptr;
 	LLGI::Shader* shader_ps = nullptr;

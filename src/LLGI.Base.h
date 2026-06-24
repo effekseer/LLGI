@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cmath>
@@ -501,12 +502,18 @@ inline std::string to_string(TextureFormatType format)
 		return "B8G8R8A8_UNORM";
 	case TextureFormatType::R8_UNORM:
 		return "R8_UNORM";
+	case TextureFormatType::R16_FLOAT:
+		return "R16_FLOAT";
+	case TextureFormatType::R32_FLOAT:
+		return "R32_FLOAT";
 	case TextureFormatType::R16G16_FLOAT:
 		return "R16G16_FLOAT";
+	case TextureFormatType::R32G32_FLOAT:
+		return "R32G32_FLOAT";
 	case TextureFormatType::R16G16B16A16_FLOAT:
 		return "R16G16B16A16_FLOAT";
 	case TextureFormatType::R32G32B32A32_FLOAT:
-		return "R8G8B8A8_UNORM_SRGB";
+		return "R32G32B32A32_FLOAT";
 	case TextureFormatType::BC1:
 		return "BC1";
 	case TextureFormatType::BC2:
@@ -643,6 +650,29 @@ inline int32_t GetTextureRowCount(TextureFormatType format, Vec3I size)
 inline int32_t GetTextureMemorySize(TextureFormatType format, Vec3I size)
 {
 	return GetTextureRowPitch(format, size) * GetTextureRowCount(format, size);
+}
+
+inline Vec3I GetTextureMipSize(Vec3I size, int32_t mipLevel, bool preserveDepth = false)
+{
+	auto getMipSize = [](int32_t value, int32_t level) -> int32_t
+	{
+		return (std::max)(value >> level, 1);
+	};
+
+	return Vec3I{
+		getMipSize(size.X, mipLevel),
+		getMipSize(size.Y, mipLevel),
+		preserveDepth ? size.Z : getMipSize(size.Z, mipLevel)};
+}
+
+inline int32_t GetTextureMemorySize(TextureFormatType format, Vec3I size, int32_t mipLevelCount, bool preserveDepth = false)
+{
+	int32_t totalSize = 0;
+	for (int32_t mipLevel = 0; mipLevel < mipLevelCount; mipLevel++)
+	{
+		totalSize += GetTextureMemorySize(format, GetTextureMipSize(size, mipLevel, preserveDepth));
+	}
+	return totalSize;
 }
 
 inline uint32_t GetMaximumMipLevels(const Vec2I& size)

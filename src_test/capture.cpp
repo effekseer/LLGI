@@ -1,7 +1,7 @@
 #include "TestHelper.h"
+#include "TextureDataGenerator.h"
 #include "test.h"
 #include <Utils/LLGI.CommandListPool.h>
-#include <array>
 
 void test_capture_texture(LLGI::DeviceType deviceType)
 {
@@ -35,8 +35,8 @@ void test_capture_texture(LLGI::DeviceType deviceType)
 			texture = LLGI::CreateSharedPtr(graphics->CreateTexture(texParam));
 		}
 
-		TestHelper::WriteDummyTexture(texture.get());
-		auto src = TestHelper::CreateDummyTextureData(texture->GetSizeAs2D(), texture->GetFormat());
+		TextureDataGenerator::WriteDummyTexture(texture.get());
+		auto src = TextureDataGenerator::CreateDummyTextureData(texture->GetSizeAs2D(), texture->GetFormat());
 		auto dst = graphics->CaptureRenderTarget(texture.get());
 
 		if (src != dst)

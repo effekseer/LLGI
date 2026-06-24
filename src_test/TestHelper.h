@@ -34,12 +34,6 @@ public:
 
 	static ParsedArgs ParseArg(int argc, char* argv[]);
 
-	static std::vector<uint8_t> CreateDummyTextureData(LLGI::Vec2I size, LLGI::TextureFormatType format);
-
-	static void WriteDummyTexture(LLGI::Texture* texture);
-
-	static void WriteDummyTexture(LLGI::Color8* data, LLGI::Vec2I size);
-
 	static std::vector<uint8_t> LoadData(const char* path);
 
 	static std::vector<uint8_t> LoadDataWithoutRoot(const char* path);

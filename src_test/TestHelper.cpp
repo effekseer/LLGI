@@ -4,6 +4,7 @@
 #include "TestHelper.h"
 #include "thirdparty/stb/stb_image.h"
 #include "thirdparty/stb/stb_image_write.h"
+#include <cstring>
 #include <functional>
 #include <map>
 #include <regex>
@@ -142,82 +143,6 @@ std::shared_ptr<TestFileReader> TestHelper::GetFileReader()
 }
 
 void TestHelper::SetFileReader(std::shared_ptr<TestFileReader> fileReader) { Get()->FileReader = fileReader; }
-
-std::vector<uint8_t> TestHelper::CreateDummyTextureData(LLGI::Vec2I size, LLGI::TextureFormatType format)
-{
-	std::vector<uint8_t> ret;
-	ret.resize(LLGI::GetTextureMemorySize(format, {size.X, size.Y, 1}));
-
-	if (format == LLGI::TextureFormatType::R8G8B8A8_UNORM)
-	{
-		auto data = reinterpret_cast<LLGI::Color8*>(ret.data());
-
-		for (int y = 0; y < size.Y; y++)
-		{
-			for (int x = 0; x < size.X; x++)
-			{
-				data[x + y * size.X].R = static_cast<int>(x % 256);
-				data[x + y * size.X].G = static_cast<int>(y % 256);
-				data[x + y * size.X].B = static_cast<int>((x % 16 > 8 || y % 16 > 8) ? 128 : 0);
-				data[x + y * size.X].A = 255;
-			}
-		}
-	}
-
-	if (format == LLGI::TextureFormatType::R32G32B32A32_FLOAT)
-	{
-		auto data = reinterpret_cast<LLGI::ColorF*>(ret.data());
-
-		for (int y = 0; y < size.Y; y++)
-		{
-			for (int x = 0; x < size.X; x++)
-			{
-				data[x + y * size.X].R = x / static_cast<float>(size.X);
-				data[x + y * size.X].G = y / static_cast<float>(size.Y);
-				data[x + y * size.X].B = (x % 16 > 8 || y % 16 > 8) ? 0.5f : 0.0f;
-				data[x + y * size.X].A = 1.0f;
-			}
-		}
-	}
-
-	if (format == LLGI::TextureFormatType::R8_UNORM)
-	{
-		auto data = reinterpret_cast<uint8_t*>(ret.data());
-
-		for (int y = 0; y < size.Y; y++)
-		{
-			for (int x = 0; x < size.X; x++)
-			{
-				data[x + y * size.X] = (x % 16 > 8 || y % 16 > 8) ? 128 : 0;
-			}
-		}
-	}
-
-	return ret;
-}
-
-void TestHelper::WriteDummyTexture(LLGI::Texture* texture)
-{
-	auto dummyData = CreateDummyTextureData(texture->GetSizeAs2D(), texture->GetFormat());
-
-	auto data = texture->Lock();
-	memcpy(data, dummyData.data(), dummyData.size());
-	texture->Unlock();
-}
-
-void TestHelper::WriteDummyTexture(LLGI::Color8* data, LLGI::Vec2I size)
-{
-	for (int y = 0; y < size.Y; y++)
-	{
-		for (int x = 0; x < size.X; x++)
-		{
-			data[x + y * 256].R = static_cast<uint8_t>(x % 256);
-			data[x + y * 256].G = static_cast<uint8_t>(y % 256);
-			data[x + y * 256].B = static_cast<uint8_t>((x % 16 > 8 || y % 16 > 8) ? 128 : 0);
-			data[x + y * 256].A = 255;
-		}
-	}
-}
 
 std::vector<uint8_t> TestHelper::LoadData(const char* path)
 {

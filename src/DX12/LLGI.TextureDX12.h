@@ -21,6 +21,8 @@ private:
 	ID3D12Resource* buffer_for_readback_ = nullptr;
 
 	D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint_;
+	std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> footprints_;
+	UINT64 uploadBufferSize_ = 0;
 	D3D12_RESOURCE_STATES state_ = D3D12_RESOURCE_STATES::D3D12_RESOURCE_STATE_COMMON;
 	DXGI_FORMAT dxgiFormat_;
 

@@ -84,6 +84,7 @@ public:
 	uint64_t TimestampToMicroseconds(uint64_t timestamp) const override;
 
 	bool IsResolvedDepthSupported() const override { return false; }
+	bool GetIsMipmapGenerationSupportedOnTextureLoad() const override { return true; }
 };
 
 } // namespace LLGI

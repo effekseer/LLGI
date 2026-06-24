@@ -53,8 +53,6 @@ bool TextureVulkan::Initialize(GraphicsVulkan* graphics,
 	device_ = device;
 	graphics_ = graphics;
 
-	parameter_ = parameter;
-
 	type_ = TextureType::Color;
 	vk::ImageType dimension = vk::ImageType::e2D;
 
@@ -119,10 +117,13 @@ bool TextureVulkan::Initialize(GraphicsVulkan* graphics,
 
 	// check whether is mipmap enabled?
 	auto properties = physicalDevice.getFormatProperties((vk::Format)vkFormat);
-	if (!(properties.optimalTilingFeatures & vk::FormatFeatureFlagBits::eSampledImageFilterLinear))
+	if (parameter.IsMipmapGenerationEnabled && !(properties.optimalTilingFeatures & vk::FormatFeatureFlagBits::eSampledImageFilterLinear))
 	{
 		mipmapCount = 1;
 	}
+
+	parameter_ = parameter;
+	parameter_.MipLevelCount = mipmapCount;
 
 	auto isArray = (parameter.Usage & TextureUsageType::Array) != TextureUsageType::NoneFlag;
 	// image
@@ -146,7 +147,8 @@ bool TextureVulkan::Initialize(GraphicsVulkan* graphics,
 	image_ = device.createImage(imageCreateInfo);
 
 	// calculate size
-	memorySize = GetTextureMemorySize(format_, parameter.Size);
+	const auto preserveDepth = (parameter.Usage & TextureUsageType::Array) != TextureUsageType::NoneFlag;
+	memorySize = GetTextureMemorySize(format_, parameter.Size, mipmapCount, preserveDepth);
 
 	// create a buffer on cpu
 	if (!IsDepthFormat(parameter.Format))
@@ -334,20 +336,34 @@ void TextureVulkan::Unlock()
 
 	auto isArray = (parameter_.Usage & TextureUsageType::Array) != TextureUsageType::NoneFlag;
 
-	vk::BufferImageCopy imageRegion;
+	std::vector<vk::BufferImageCopy> imageRegions;
+	size_t srcOffset = 0;
+	for (int32_t mipLevel = 0; mipLevel < mipmapCount_; mipLevel++)
+	{
+		auto mipDataSize = GetTextureMipSize(parameter_.Size, mipLevel, isArray);
+		auto mipImageSize = mipDataSize;
+		if (isArray)
+		{
+			mipImageSize.Z = 1;
+		}
 
-	imageRegion.bufferOffset = 0;
-	imageRegion.bufferRowLength = 0;
-	imageRegion.bufferImageHeight = 0;
+		vk::BufferImageCopy imageRegion;
+		imageRegion.bufferOffset = srcOffset;
+		imageRegion.bufferRowLength = 0;
+		imageRegion.bufferImageHeight = 0;
+		imageRegion.imageSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
+		imageRegion.imageSubresource.mipLevel = mipLevel;
+		imageRegion.imageSubresource.baseArrayLayer = 0;
+		imageRegion.imageSubresource.layerCount = isArray ? parameter_.Size.Z : 1;
+		imageRegion.imageOffset = vk::Offset3D(0, 0, 0);
+		imageRegion.imageExtent = vk::Extent3D(
+			static_cast<uint32_t>(mipImageSize.X),
+			static_cast<uint32_t>(mipImageSize.Y),
+			static_cast<uint32_t>(mipImageSize.Z));
+		imageRegions.emplace_back(imageRegion);
 
-	imageRegion.imageSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
-	imageRegion.imageSubresource.mipLevel = 0;
-	imageRegion.imageSubresource.baseArrayLayer = 0;
-	imageRegion.imageSubresource.layerCount = isArray ? parameter_.Size.Z : 1;
-
-	imageRegion.imageOffset = vk::Offset3D(0, 0, 0);
-	imageRegion.imageExtent =
-		vk::Extent3D(static_cast<uint32_t>(GetSizeAs2D().X), static_cast<uint32_t>(GetSizeAs2D().Y), isArray ? 1 : parameter_.Size.Z);
+		srcOffset += GetTextureMemorySize(format_, mipDataSize);
+	}
 
 	vk::ImageSubresourceRange colorSubRange;
 	colorSubRange.aspectMask = vk::ImageAspectFlagBits::eColor;
@@ -356,7 +372,7 @@ void TextureVulkan::Unlock()
 
 	vk::ImageLayout imageLayout = vk::ImageLayout::eTransferDstOptimal;
 	ResourceBarrier(copyCommandBuffer, imageLayout);
-	copyCommandBuffer.copyBufferToImage(cpuBuf->buffer(), image_, imageLayout, imageRegion);
+	copyCommandBuffer.copyBufferToImage(cpuBuf->buffer(), image_, imageLayout, static_cast<uint32_t>(imageRegions.size()), imageRegions.data());
 	ResourceBarrier(copyCommandBuffer, vk::ImageLayout::eShaderReadOnlyOptimal);
 	copyCommandBuffer.end();
 
@@ -445,8 +461,9 @@ bool TextureVulkan::GetData(std::vector<uint8_t>& data)
 
 	if (datatemp != nullptr)
 	{
-		data.resize(memorySize);
-		memcpy(data.data(), datatemp, memorySize);
+		const auto baseMemorySize = GetTextureMemorySize(format_, textureSize);
+		data.resize(baseMemorySize);
+		memcpy(data.data(), datatemp, baseMemorySize);
 	}
 
 	graphics_->GetDevice().unmapMemory(cpuBuf->devMem());

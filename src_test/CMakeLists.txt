@@ -1,5 +1,16 @@
 if(BUILD_WEBGPU_BROWSER_TEST)
-  set(files main.cpp TestHelper.cpp TestHelper.h test.h test_webgpu_browser.cpp)
+  set(files
+      main.cpp
+      RenderTestHelper.cpp
+      RenderTestHelper.h
+      TestHelper.cpp
+      TestHelper.h
+      TextureDataGenerator.cpp
+      TextureDataGenerator.h
+      TextureRenderTestHelper.cpp
+      TextureRenderTestHelper.h
+      test.h
+      test_webgpu_browser.cpp)
 else()
   file(GLOB files CONFIGURE_DEPENDS *.h *.cpp)
   list(FILTER files EXCLUDE REGEX "test_webgpu_browser\\.cpp$")

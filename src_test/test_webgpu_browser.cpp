@@ -1,4 +1,6 @@
 #include "TestHelper.h"
+#include "TextureDataGenerator.h"
+#include "TextureRenderTestHelper.h"
 #include "test.h"
 
 #include <Utils/LLGI.CommandListPool.h>
@@ -126,7 +128,7 @@ void test_webgpu_browser_texture_and_constant_render(LLGI::DeviceType deviceType
 	textureParam.Format = LLGI::TextureFormatType::R8G8B8A8_UNORM;
 	auto texture = LLGI::CreateSharedPtr(graphics->CreateTexture(textureParam));
 	VERIFY(texture != nullptr);
-	TestHelper::WriteDummyTexture(texture.get());
+	TextureDataGenerator::WriteDummyTexture(texture.get());
 
 	LLGI::RenderTextureInitializationParameter renderTextureParam;
 	renderTextureParam.Size = LLGI::Vec2I(128, 128);
@@ -251,6 +253,12 @@ void test_webgpu_browser_texture_and_constant_render(LLGI::DeviceType deviceType
 
 	verifyPixel(64, 64, 155, 255, 188, 255);
 	verifyPixel(2, 2, 8, 16, 24, 255);
+}
+
+void test_webgpu_browser_texture_format_raw_data(LLGI::DeviceType deviceType, const TextureFormatRenderTestCase& testCase)
+{
+	VERIFY(deviceType == LLGI::DeviceType::WebGPU);
+	RunTextureFormatRawDataOffscreenRenderTest(deviceType, testCase);
 }
 
 void test_webgpu_browser_compute_compile(LLGI::DeviceType deviceType)
@@ -506,6 +514,30 @@ TestRegister WebGPUBrowser_ComputeCompile(
 TestRegister WebGPUBrowser_TextureAndConstantRender(
 	"WebGPUBrowser.TextureAndConstantRender",
 	[](LLGI::DeviceType device) -> void { test_webgpu_browser_texture_and_constant_render(device); });
+
+TestRegister WebGPUBrowser_TextureRawData_RGBA8(
+	"WebGPUBrowser.TextureRawData_RGBA8",
+	[](LLGI::DeviceType device) -> void {
+		test_webgpu_browser_texture_format_raw_data(device, {"TextureRawData_RGBA8", LLGI::TextureFormatType::R8G8B8A8_UNORM, 1});
+	});
+
+TestRegister WebGPUBrowser_TextureRawData_R8(
+	"WebGPUBrowser.TextureRawData_R8",
+	[](LLGI::DeviceType device) -> void {
+		test_webgpu_browser_texture_format_raw_data(device, {"TextureRawData_R8", LLGI::TextureFormatType::R8_UNORM, 1});
+	});
+
+TestRegister WebGPUBrowser_TextureRawData_RG11B10_UFLOAT(
+	"WebGPUBrowser.TextureRawData_RG11B10_UFLOAT",
+	[](LLGI::DeviceType device) -> void {
+		test_webgpu_browser_texture_format_raw_data(device, {"TextureRawData_RG11B10_UFLOAT", LLGI::TextureFormatType::RG11B10_UFLOAT, 1});
+	});
+
+TestRegister WebGPUBrowser_TextureRawData_RGBA8_MipMap(
+	"WebGPUBrowser.TextureRawData_RGBA8_MipMap",
+	[](LLGI::DeviceType device) -> void {
+		test_webgpu_browser_texture_format_raw_data(device, {"TextureRawData_RGBA8_MipMap", LLGI::TextureFormatType::R8G8B8A8_UNORM, 4});
+	});
 
 TestRegister WebGPUBrowser_ComputeDispatch(
 	"WebGPUBrowser.ComputeDispatch",

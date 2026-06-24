@@ -126,13 +126,33 @@ bool TextureMetal::Initialize(id<MTLDevice> device, const TextureParameter& para
 
 void TextureMetal::Write(const uint8_t* data)
 {
-	MTLRegion region = {{0, 0, 0}, {static_cast<uint32_t>(size_.X), static_cast<uint32_t>(size_.Y), static_cast<uint32_t>(size_.Z)}};
+	if (data == nullptr)
+	{
+		return;
+	}
 
-	auto all_size = GetTextureMemorySize(ConvertFormat(texture_.pixelFormat), size_);
-	auto bytes_per_row = all_size / size_.Y / size_.Z;
-	auto bytes_per_image = all_size / size_.Z;
+	const auto format = ConvertFormat(texture_.pixelFormat);
+	size_t offset = 0;
+	for (int32_t mipLevel = 0; mipLevel < mipmapCount_; mipLevel++)
+	{
+		auto mipSize = GetTextureMipSize(size_, mipLevel);
+		MTLRegion region = {
+			{0, 0, 0},
+			{static_cast<uint32_t>(mipSize.X), static_cast<uint32_t>(mipSize.Y), static_cast<uint32_t>(mipSize.Z)}};
 
-	[texture_ replaceRegion:region mipmapLevel:0 slice:0 withBytes:data bytesPerRow:bytes_per_row bytesPerImage:bytes_per_image];
+		auto all_size = GetTextureMemorySize(format, mipSize);
+		auto bytes_per_row = GetTextureRowPitch(format, mipSize);
+		auto bytes_per_image = all_size / mipSize.Z;
+
+		[texture_ replaceRegion:region
+					mipmapLevel:mipLevel
+						  slice:0
+					  withBytes:data + offset
+					bytesPerRow:bytes_per_row
+				  bytesPerImage:bytes_per_image];
+
+		offset += all_size;
+	}
 }
 
 TextureMetal::TextureMetal() {}
@@ -158,8 +178,8 @@ bool TextureMetal::Initialize(GraphicsMetal* owner, const TextureParameter& para
 
 	format_ = ConvertFormat(texture_.pixelFormat);
     usage_ = parameter.Usage;
-	data_.resize(GetTextureMemorySize(format_, parameter.Size));
 	parameter_ = parameter;
+	data_.resize(GetTextureMemorySize(format_, parameter.Size, mipmapCount_, (parameter.Usage & TextureUsageType::Array) != TextureUsageType::NoneFlag));
 	return true;
 }
 

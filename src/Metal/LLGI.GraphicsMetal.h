@@ -78,6 +78,7 @@ public:
 	Query* CreateQuery(QueryType queryType, int32_t queryCount) override;
 
 	bool IsResolvedDepthSupported() const override { return true; }
+	bool GetIsMipmapGenerationSupportedOnTextureLoad() const override { return true; }
 
 	uint64_t TimestampToMicroseconds(uint64_t timestamp) const override;
 	

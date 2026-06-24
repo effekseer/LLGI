@@ -88,6 +88,7 @@ public:
 
 	//! ResolvingDepth is only supported on the latestet Nvidia video card and driver
 	bool IsResolvedDepthSupported() const override { return false; }
+	bool GetIsMipmapGenerationSupportedOnTextureLoad() const override { return true; }
 
 	Query* CreateQuery(QueryType queryType, int32_t queryCount) override;
 	uint64_t TimestampToMicroseconds(uint64_t timestamp) const override;

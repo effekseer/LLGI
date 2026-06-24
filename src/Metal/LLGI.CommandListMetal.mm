@@ -387,6 +387,12 @@ void CommandListMetal::CopyTexture(
 void CommandListMetal::GenerateMipMap(Texture* src)
 {
 	auto srcTex = static_cast<TextureMetal*>(src);
+	const auto& parameter = srcTex->GetParameter();
+
+	if (!parameter.IsMipmapGenerationEnabled || IsBlockCompressedFormat(parameter.Format))
+	{
+		return;
+	}
 
 	id<MTLBlitCommandEncoder> blitEncoder = [commandBuffer_ blitCommandEncoder];
 	[blitEncoder generateMipmapsForTexture:srcTex->GetTexture()];

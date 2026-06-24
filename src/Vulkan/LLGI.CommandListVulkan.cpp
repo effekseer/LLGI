@@ -663,6 +663,12 @@ void CommandListVulkan::CopyTexture(
 void CommandListVulkan::GenerateMipMap(Texture* src)
 {
 	auto srcTex = static_cast<TextureVulkan*>(src);
+	const auto& parameter = srcTex->GetParameter();
+
+	if (!parameter.IsMipmapGenerationEnabled || IsBlockCompressedFormat(parameter.Format))
+	{
+		return;
+	}
 
 	int32_t mipWidth = src->GetSizeAs2D().X;
 	int32_t mipHeight = src->GetSizeAs2D().Y;

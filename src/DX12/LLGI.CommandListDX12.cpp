@@ -16,8 +16,12 @@ namespace
 
 bool CanGenerateMipMap(const TextureDX12* texture)
 {
-	return texture != nullptr && texture->GetMipmapCount() > 1 && texture->GetParameter().Dimension == 2 &&
-		   texture->GetParameter().SampleCount == 1;
+	return texture != nullptr &&
+		   texture->GetParameter().IsMipmapGenerationEnabled &&
+		   texture->GetMipmapCount() > 1 &&
+		   texture->GetParameter().Dimension == 2 &&
+		   texture->GetParameter().SampleCount == 1 &&
+		   !IsBlockCompressedFormat(texture->GetParameter().Format);
 }
 
 int32_t GetStorageBufferViewElementSize(int32_t stride, bool isRawBuffer)

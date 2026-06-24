@@ -66,11 +66,12 @@ bool TextureDX12::Initialize(const TextureParameter& parameter)
 	format_ = parameter.Format;
 	usage_ = parameter.Usage;
 	dxgiFormat_ = ConvertFormat(parameter.Format);
-	cpu_memory_size_ = GetTextureMemorySize(format_, parameter.Size);
 	texture_size_ = parameter.Size;
 	samplingCount_ = parameter.SampleCount;
 	parameter_ = parameter;
 	mipmapCount_ = parameter.MipLevelCount;
+	const auto preserveDepth = (parameter.Usage & TextureUsageType::Array) != TextureUsageType::NoneFlag;
+	cpu_memory_size_ = GetTextureMemorySize(format_, parameter.Size, mipmapCount_, preserveDepth);
 
 	type_ = TextureType::Color;
 
@@ -103,7 +104,8 @@ bool TextureDX12::Initialize(const TextureParameter& parameter)
 		resourceFlag |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 	}
 
-	if (parameter.MipLevelCount > 1 && type_ == TextureType::Color && parameter.Dimension == 2 && parameter.SampleCount == 1)
+	if (parameter.IsMipmapGenerationEnabled && parameter.MipLevelCount > 1 && type_ == TextureType::Color && parameter.Dimension == 2 &&
+		parameter.SampleCount == 1 && !IsBlockCompressedFormat(parameter.Format))
 	{
 		resourceFlag |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 	}
@@ -182,9 +184,14 @@ bool TextureDX12::Initialize(ID3D12Resource* textureResource)
 
 void TextureDX12::CreateUploadReadbackBuffer()
 {
-	UINT64 size = 0;
 	auto textureDesc = texture_->GetDesc();
-	device_->GetCopyableFootprints(&textureDesc, 0, 1, 0, &footprint_, nullptr, nullptr, &size);
+	const UINT subresourceCount =
+		textureDesc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE3D
+			? textureDesc.MipLevels
+			: static_cast<UINT>(textureDesc.MipLevels * textureDesc.DepthOrArraySize);
+	footprints_.resize((std::max)(subresourceCount, 1u));
+	device_->GetCopyableFootprints(&textureDesc, 0, static_cast<UINT>(footprints_.size()), 0, footprints_.data(), nullptr, nullptr, &uploadBufferSize_);
+	footprint_ = footprints_.at(0);
 
 	buffer_for_upload_ = CreateResourceBuffer(device_,
 											  D3D12_HEAP_TYPE_UPLOAD,
@@ -192,7 +199,7 @@ void TextureDX12::CreateUploadReadbackBuffer()
 											  D3D12_RESOURCE_DIMENSION_BUFFER,
 											  D3D12_RESOURCE_STATE_GENERIC_READ,
 											  D3D12_RESOURCE_FLAG_NONE,
-											  {static_cast<int32_t>(size), 1, 1},
+											  {static_cast<int32_t>(uploadBufferSize_), 1, 1},
 											  1);
 	assert(buffer_for_upload_ != nullptr);
 
@@ -202,51 +209,57 @@ void TextureDX12::CreateUploadReadbackBuffer()
 												D3D12_RESOURCE_DIMENSION_BUFFER,
 												D3D12_RESOURCE_STATE_COPY_DEST,
 												D3D12_RESOURCE_FLAG_NONE,
-												{static_cast<int32_t>(size), 1, 1},
+												{static_cast<int32_t>(uploadBufferSize_), 1, 1},
 												1);
 	assert(buffer_for_readback_ != nullptr);
 
-	if (static_cast<int32_t>(footprint_.Footprint.RowPitch) != GetTextureRowPitch(format_, texture_size_))
-	{
-		locked_buffer_.resize(cpu_memory_size_);
-	}
+	locked_buffer_.resize(cpu_memory_size_);
 }
 
 void* TextureDX12::Lock()
 {
-	if (locked_buffer_.size() > 0)
-	{
-		return locked_buffer_.data();
-	}
-	else
-	{
-		void* ptr = nullptr;
-		buffer_for_upload_->Map(0, nullptr, &ptr);
-		return ptr;
-	}
+	return locked_buffer_.empty() ? nullptr : locked_buffer_.data();
 }
 
 void TextureDX12::Unlock()
 {
-	if (locked_buffer_.size() > 0)
-	{
-		uint8_t* ptr = nullptr;
-		buffer_for_upload_->Map(0, nullptr, (void**)&ptr);
+	uint8_t* ptr = nullptr;
+	buffer_for_upload_->Map(0, nullptr, (void**)&ptr);
 
-		const int32_t rowCount = GetTextureRowCount(format_, texture_size_);
-		const int32_t rowPitch = GetTextureRowPitch(format_, texture_size_);
-		for (int32_t i = 0; i < rowCount; i++)
+	if (ptr != nullptr)
+	{
+		size_t srcOffset = 0;
+		const bool isArray = (parameter_.Usage & TextureUsageType::Array) != TextureUsageType::NoneFlag;
+		for (UINT subresource = 0; subresource < static_cast<UINT>(footprints_.size()); subresource++)
 		{
-			auto p = ptr + i * footprint_.Footprint.RowPitch;
-			memcpy(p, locked_buffer_.data() + rowPitch * i, rowPitch);
-		}
+			const int32_t mipLevel = parameter_.MipLevelCount > 0 ? static_cast<int32_t>(subresource % parameter_.MipLevelCount) : 0;
+			auto mipSize = GetTextureMipSize(texture_size_, mipLevel, isArray);
+			if (isArray)
+			{
+				mipSize.Z = 1;
+			}
 
-		buffer_for_upload_->Unmap(0, nullptr);
+			const int32_t rowCount = GetTextureRowCount(format_, mipSize);
+			const int32_t rowPitch = GetTextureRowPitch(format_, mipSize);
+			const auto& footprint = footprints_.at(subresource);
+			const size_t subresourceSize = static_cast<size_t>(rowPitch) * rowCount;
+
+			if (srcOffset + subresourceSize > locked_buffer_.size())
+			{
+				break;
+			}
+
+			auto dst = ptr + footprint.Offset;
+			const auto src = locked_buffer_.data() + srcOffset;
+			for (int32_t row = 0; row < rowCount; row++)
+			{
+				memcpy(dst + static_cast<size_t>(row) * footprint.Footprint.RowPitch, src + static_cast<size_t>(row) * rowPitch, rowPitch);
+			}
+
+			srcOffset += subresourceSize;
+		}
 	}
-	else
-	{
-		buffer_for_upload_->Unmap(0, nullptr);
-	}
+	buffer_for_upload_->Unmap(0, nullptr);
 
 	ID3D12CommandAllocator* commandAllocator = nullptr;
 	ID3D12GraphicsCommandList* commandList = nullptr;
@@ -286,17 +299,20 @@ void TextureDX12::Unlock()
 		goto FAILED_EXIT;
 	}
 
-	src.pResource = buffer_for_upload_;
-	src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-	src.PlacedFootprint = footprint_;
-
-	dst.pResource = texture_;
-	dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-	dst.SubresourceIndex = 0;
-
 	ResourceBarrier(commandList, D3D12_RESOURCE_STATE_COPY_DEST);
 
-	commandList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+	for (UINT subresource = 0; subresource < static_cast<UINT>(footprints_.size()); subresource++)
+	{
+		src.pResource = buffer_for_upload_;
+		src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+		src.PlacedFootprint = footprints_.at(subresource);
+
+		dst.pResource = texture_;
+		dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+		dst.SubresourceIndex = subresource;
+
+		commandList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+	}
 
 	ResourceBarrier(commandList, D3D12_RESOURCE_STATE_GENERIC_READ);
 
