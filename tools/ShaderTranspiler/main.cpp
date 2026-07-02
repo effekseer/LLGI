@@ -36,6 +36,7 @@ int main(int argc, char* argv[])
 	bool isDX12 = false;
 	bool plain = false;
 	bool fixWGSLMatrixDirection = false;
+	bool isVulkanSPV = false;
 	int shaderModel = 0;
 	std::vector<std::string> includeDir;
 	std::vector<LLGI::SPIRVGeneratorMacro> macros;
@@ -122,6 +123,11 @@ int main(int argc, char* argv[])
 			fixWGSLMatrixDirection = true;
 			i += 1;
 		}
+		else if (args[i] == "--vulkan-spv")
+		{
+			isVulkanSPV = true;
+			i += 1;
+		}
 		else if (args[i] == "--input")
 		{
 			if (i == args.size() - 1)
@@ -205,7 +211,8 @@ int main(int argc, char* argv[])
 
 	auto generator = std::make_shared<LLGI::SPIRVGenerator>(loadFunc);
 
-	auto spirv = generator->Generate(inputPath.c_str(), code.c_str(), includeDir, macros, shaderStage, outputType == OutputType::VULKAN_GLSL, outputType == OutputType::WGSL);
+	const bool isVulkanTarget = outputType == OutputType::VULKAN_GLSL || (outputType == OutputType::SPV && isVulkanSPV);
+	auto spirv = generator->Generate(inputPath.c_str(), code.c_str(), includeDir, macros, shaderStage, isVulkanTarget, outputType == OutputType::WGSL);
 
 	if (spirv->GetData().size() == 0)
 	{
@@ -250,14 +257,19 @@ int main(int argc, char* argv[])
 		}
 		else if (outputType == OutputType::SPV)
 		{
+			if (isVulkanSPV)
+			{
+				spirv->RemapResourceBindingsForVulkan();
+			}
+
 			std::ofstream ofs;
-			ofs.open(outputPath, std::ios::app | std::ios::binary);
+			ofs.open(outputPath, std::ios::trunc | std::ios::binary);
 			if (!ofs)
 			{
 				return 1;
 			}
 
-			ofs.write(reinterpret_cast<const char*>(spirv->GetData().data()), spirv->GetData().size() * sizeof(int));
+			ofs.write(reinterpret_cast<const char*>(spirv->GetData().data()), spirv->GetData().size() * sizeof(uint32_t));
 			ofs.flush();
 			ofs.close();
 			return 0;

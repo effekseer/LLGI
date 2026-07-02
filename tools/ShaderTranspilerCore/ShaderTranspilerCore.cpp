@@ -348,6 +348,90 @@ EShLanguage GetGlslangShaderStage(ShaderStageType type)
 		return EShLanguage::EShLangCompute;
 	throw std::string("Unimplemented ShaderStage");
 }
+
+uint32_t MakeSpvInstruction(spv::Op op, uint32_t wordCount)
+{
+	return (wordCount << 16) | static_cast<uint32_t>(op);
+}
+
+bool IsAnnotationInstruction(spv::Op op)
+{
+	switch (op)
+	{
+	case spv::OpDecorate:
+	case spv::OpMemberDecorate:
+	case spv::OpGroupDecorate:
+	case spv::OpGroupMemberDecorate:
+	case spv::OpDecorateId:
+	case spv::OpDecorateStringGOOGLE:
+	case spv::OpMemberDecorateStringGOOGLE:
+		return true;
+	default:
+		return false;
+	}
+}
+
+bool SetDecorationValue(std::vector<uint32_t>& data, uint32_t targetId, spv::Decoration decoration, uint32_t value)
+{
+	for (size_t i = 5; i < data.size();)
+	{
+		const auto word = data[i];
+		const auto wordCount = word >> 16;
+		const auto op = static_cast<spv::Op>(word & 0xffff);
+
+		if (wordCount == 0 || i + wordCount > data.size())
+		{
+			return false;
+		}
+
+		if (op == spv::OpDecorate && wordCount >= 4 && data[i + 1] == targetId &&
+			data[i + 2] == static_cast<uint32_t>(decoration))
+		{
+			data[i + 3] = value;
+			return true;
+		}
+
+		i += wordCount;
+	}
+
+	return false;
+}
+
+void SetOrInsertDecorationValue(std::vector<uint32_t>& data, uint32_t targetId, spv::Decoration decoration, uint32_t value)
+{
+	if (SetDecorationValue(data, targetId, decoration, value))
+	{
+		return;
+	}
+
+	size_t insertPos = 5;
+	for (size_t i = 5; i < data.size();)
+	{
+		const auto word = data[i];
+		const auto wordCount = word >> 16;
+		const auto op = static_cast<spv::Op>(word & 0xffff);
+
+		if (wordCount == 0 || i + wordCount > data.size())
+		{
+			break;
+		}
+
+		if (IsAnnotationInstruction(op))
+		{
+			insertPos = i + wordCount;
+		}
+
+		i += wordCount;
+	}
+
+	const std::vector<uint32_t> instruction = {MakeSpvInstruction(spv::OpDecorate, 4), targetId, static_cast<uint32_t>(decoration), value};
+	data.insert(data.begin() + insertPos, instruction.begin(), instruction.end());
+}
+
+void SetDescriptorSet(std::vector<uint32_t>& data, const spirv_cross::Resource& resource, uint32_t descriptorSet)
+{
+	SetOrInsertDecorationValue(data, resource.id, spv::DecorationDescriptorSet, descriptorSet);
+}
 } // namespace
 
 SPIRV::SPIRV(const std::vector<uint32_t>& data, ShaderStageType shaderStage) : data_(data), shaderStage_(shaderStage) {}
@@ -357,6 +441,42 @@ SPIRV::SPIRV(const std::string& error) : error_(error), shaderStage_{} {}
 ShaderStageType SPIRV::GetStage() const { return shaderStage_; }
 
 const std::vector<uint32_t>& SPIRV::GetData() const { return data_; }
+
+void SPIRV::RemapResourceBindingsForVulkan()
+{
+	spirv_cross::Compiler compiler(data_);
+	const auto resources = compiler.get_shader_resources();
+
+	for (const auto& resource : resources.uniform_buffers)
+	{
+		SetDescriptorSet(data_, resource, 0);
+	}
+
+	for (const auto& resource : resources.sampled_images)
+	{
+		SetDescriptorSet(data_, resource, 1);
+	}
+
+	for (const auto& resource : resources.separate_images)
+	{
+		SetDescriptorSet(data_, resource, 1);
+	}
+
+	for (const auto& resource : resources.separate_samplers)
+	{
+		SetDescriptorSet(data_, resource, 1);
+	}
+
+	for (const auto& resource : resources.storage_buffers)
+	{
+		SetDescriptorSet(data_, resource, 2);
+	}
+
+	for (const auto& resource : resources.storage_images)
+	{
+		SetDescriptorSet(data_, resource, 3);
+	}
+}
 
 bool SPIRVTranspiler::Transpile(const std::shared_ptr<SPIRV>& spirv, LLGI::ShaderStageType shaderStageType) { return false; }
 

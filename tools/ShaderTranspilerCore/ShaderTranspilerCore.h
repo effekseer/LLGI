@@ -40,6 +40,8 @@ public:
 
 	const std::vector<uint32_t>& GetData() const;
 
+	void RemapResourceBindingsForVulkan();
+
 	std::string GetError() const { return error_; }
 };
 
