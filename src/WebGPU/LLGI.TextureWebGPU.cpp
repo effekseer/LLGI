@@ -148,6 +148,13 @@ void WriteTextureMipLevel(
 	extent.width = size.X;
 	extent.height = size.Y;
 	extent.depthOrArrayLayers = size.Z;
+	if (IsBlockCompressedFormat(format))
+	{
+		// WebGPU copies use the physical block extent, including tail mips
+		// whose logical width or height is smaller than one compressed block.
+		extent.width = AlignTo(extent.width, 4);
+		extent.height = AlignTo(extent.height, 4);
+	}
 	device.GetQueue().WriteTexture(&dst, uploadData.Data(), uploadData.Size(), &layout, &extent);
 }
 

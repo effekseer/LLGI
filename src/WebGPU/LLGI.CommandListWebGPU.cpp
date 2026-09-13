@@ -698,11 +698,9 @@ void CommandListWebGPU::WaitUntilCompleted()
 	auto state = std::make_shared<WaitState>();
 	auto queue = device_.GetQueue();
 	queue.OnSubmittedWorkDone(
-#if defined(__EMSCRIPTEN__)
+		// This command list owns a device, not an instance. Device::Tick does
+		// not dispatch AllowProcessEvents callbacks; allow completion directly.
 		wgpu::CallbackMode::AllowSpontaneous,
-#else
-		wgpu::CallbackMode::AllowProcessEvents,
-#endif
 		[state](wgpu::QueueWorkDoneStatus status, wgpu::StringView)
 		{
 			state->Succeeded.store(status == wgpu::QueueWorkDoneStatus::Success, std::memory_order_relaxed);
