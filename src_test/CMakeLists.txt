@@ -10,6 +10,7 @@ if(BUILD_WEBGPU_BROWSER_TEST)
       TextureRenderTestHelper.cpp
       TextureRenderTestHelper.h
       TextureUploadReadback.cpp
+      TextureUploadReadbackWebGPU.cpp
       TextureUploadReadback.h
       test.h
       test_texture_upload.cpp

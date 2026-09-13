@@ -12,15 +12,10 @@
 #include <Vulkan/LLGI.CommandListVulkan.h>
 #include <Vulkan/LLGI.TextureVulkan.h>
 #endif
-#ifdef ENABLE_WEBGPU
-#include <WebGPU/LLGI.BufferWebGPU.h>
-#include <WebGPU/LLGI.GraphicsWebGPU.h>
-#include <WebGPU/LLGI.TextureWebGPU.h>
-#endif
 
 namespace
 {
-#if defined(_WIN32) || defined(ENABLE_VULKAN) || defined(ENABLE_WEBGPU)
+#if defined(_WIN32) || defined(ENABLE_VULKAN)
 std::vector<uint8_t> ReadRows(LLGI::Buffer* buffer, const LLGI::Vec2I& size, size_t rowPitch)
 {
 	const auto mapped = static_cast<const uint8_t*>(buffer->Lock());
@@ -114,36 +109,6 @@ std::vector<uint8_t> ReadVulkan(LLGI::Graphics* graphics, LLGI::Texture* texture
 }
 #endif
 
-#ifdef ENABLE_WEBGPU
-std::vector<uint8_t> ReadWebGPU(LLGI::Graphics* graphics, LLGI::Texture* texture, int32_t mip, int32_t layer,
-							  const LLGI::Vec2I& size)
-{
-	const uint32_t rowPitch = (static_cast<uint32_t>(size.X) * 4 + 255) / 256 * 256;
-	auto readback = LLGI::CreateSharedPtr(graphics->CreateBuffer(LLGI::BufferUsageType::CopyDst | LLGI::BufferUsageType::MapRead,
-															 rowPitch * size.Y));
-	VERIFY(readback != nullptr);
-	auto nativeGraphics = static_cast<LLGI::GraphicsWebGPU*>(graphics);
-	auto encoder = nativeGraphics->GetDevice().CreateCommandEncoder();
-	wgpu::TexelCopyTextureInfo src{};
-	src.texture = static_cast<LLGI::TextureWebGPU*>(texture)->GetTexture();
-	src.mipLevel = mip;
-	src.origin.z = layer;
-	src.aspect = wgpu::TextureAspect::All;
-	wgpu::TexelCopyBufferInfo dst{};
-	dst.buffer = static_cast<LLGI::BufferWebGPU*>(readback.get())->GetBuffer();
-	dst.layout.bytesPerRow = rowPitch;
-	dst.layout.rowsPerImage = size.Y;
-	wgpu::Extent3D extent{};
-	extent.width = size.X;
-	extent.height = size.Y;
-	extent.depthOrArrayLayers = 1;
-	encoder.CopyTextureToBuffer(&src, &dst, &extent);
-	auto commands = encoder.Finish();
-	nativeGraphics->GetQueue().Submit(1, &commands);
-	// Mapping waits for this buffer's copy, including in the browser build.
-	return ReadRows(readback.get(), size, rowPitch);
-}
-#endif
 } // namespace
 
 std::vector<uint8_t> ReadTextureUploadPlane(LLGI::Graphics* graphics, LLGI::DeviceType device, LLGI::Texture* texture,
@@ -165,7 +130,7 @@ std::vector<uint8_t> ReadTextureUploadPlane(LLGI::Graphics* graphics, LLGI::Devi
 #endif
 #ifdef ENABLE_WEBGPU
 	case LLGI::DeviceType::WebGPU:
-		return ReadWebGPU(graphics, texture, mip, layer, size);
+		return ReadTextureUploadPlaneWebGPU(graphics, texture, mip, layer, size);
 #endif
 	default:
 		std::cerr << "Texture upload readback is not implemented for the selected backend." << std::endl;
