@@ -803,6 +803,7 @@ void test_vertex_structured(LLGI::DeviceType deviceType)
 			count++;
 		}
 
+	graphics->WaitFinish();
 	pips.clear();
 }
 

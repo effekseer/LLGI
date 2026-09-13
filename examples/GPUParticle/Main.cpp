@@ -144,6 +144,9 @@ int main()
 		if (!platform->NewFrame())
 			break;
 
+		auto commandList = commandLists[count % commandLists.size()];
+		commandList->WaitUntilCompleted();
+
 		sfMemoryPool->NewFrame();
 
 		particleContext->NewFrame();
@@ -157,8 +160,6 @@ int main()
 
 		auto renderPass = platform->GetCurrentScreen(color, true, false); // TODO: isDepthClear is false, because it fails with dx12.
 
-		auto commandList = commandLists[count % commandLists.size()];
-		commandList->WaitUntilCompleted();
 
 
 

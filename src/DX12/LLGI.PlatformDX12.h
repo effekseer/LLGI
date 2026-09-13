@@ -34,8 +34,9 @@ private:
 	std::array<RenderPassDX12*, SwapBufferCount> renderPasses_;
 
 	std::array<ID3D12CommandAllocator*, SwapBufferCount> commandAllocators;
-	ID3D12GraphicsCommandList* commandListStart = nullptr;
-	ID3D12GraphicsCommandList* commandListPresent = nullptr;
+	std::array<ID3D12GraphicsCommandList*, SwapBufferCount> commandListsStart_{};
+	std::array<ID3D12GraphicsCommandList*, SwapBufferCount> commandListsPresent_{};
+	std::array<UINT64, SwapBufferCount> frameFenceValues_{};
 	UINT64 fenceValue = 1;
 
 	int32_t frameIndex = 0;

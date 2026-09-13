@@ -61,8 +61,8 @@ private:
 	Vec2I windowSize_;
 	Vec2I swapchainSize_;
 
-	//! to check to finish present
-	vk::Semaphore vkPresentComplete_;
+	// Wait for acquisition of the next image, independently of other frames.
+	vk::Fence imageAvailableFence_;
 
 	std::vector<vk::CommandBuffer> vkCmdBuffers;
 
@@ -74,7 +74,7 @@ private:
 
 	//! depth buffer
 	// DepthStencilBuffer depthStencilBuffer;
-	TextureVulkan* depthStencilTexture_ = nullptr;
+	std::vector<std::shared_ptr<TextureVulkan>> depthStencilTextures_;
 
 	RenderPassPipelineStateCacheVulkan* renderPassPipelineStateCache_ = nullptr;
 
@@ -105,11 +105,10 @@ private:
 
 	/*!
 		@brief	get swap buffer index
-		@param	semaphore	the signaling semaphore to be waited for other functions
 	*/
-	vk::Result AcquireNextImage(vk::Semaphore& semaphore);
+	vk::Result AcquireNextImage();
 
-	vk::Fence GetSubmitFence(bool destroy = false);
+	vk::Fence GetSubmitFence();
 
 	/**
 		@brief	the semaphore to wait for before present

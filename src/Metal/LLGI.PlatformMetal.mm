@@ -39,6 +39,14 @@ struct PlatformMetal_Impl
 
 	~PlatformMetal_Impl()
 	{
+		// Presentation uses the rendering queue too. Drain it before releasing its resources.
+		if (commandQueue != nullptr)
+		{
+			id<MTLCommandBuffer> completion = [commandQueue commandBuffer];
+			[completion commit];
+			[completion waitUntilCompleted];
+		}
+
 		if (drawable != nullptr)
 		{
 			[drawable release];
@@ -179,6 +187,10 @@ Graphics* PlatformMetal::CreateGraphics()
 
 	if (ret->Initialize(getGraphicsView))
 	{
+		// Commit presentation after rendering on the same queue, without a CPU wait.
+		[impl->commandQueue release];
+		impl->commandQueue = ret->GetCommandQueue();
+		[impl->commandQueue retain];
 		return ret;
 	}
 

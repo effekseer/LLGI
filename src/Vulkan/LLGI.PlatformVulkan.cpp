@@ -182,7 +182,7 @@ bool PlatformVulkan::CreateSwapChain(Vec2I windowSize, bool waitVSync)
 
 bool PlatformVulkan::CreateDepthBuffer(Vec2I windowSize)
 {
-	SafeRelease(depthStencilTexture_);
+	depthStencilTextures_.clear();
 
 	TextureParameter param;
 	param.Dimension = 2;
@@ -191,20 +191,22 @@ bool PlatformVulkan::CreateDepthBuffer(Vec2I windowSize)
 	param.SampleCount = 1;
 	param.Size = {windowSize.X, windowSize.Y, 1};
 
-	depthStencilTexture_ = new TextureVulkan();
-	if (depthStencilTexture_->Initialize(nullptr, vkDevice_, vkPhysicalDevice, nullptr, param))
+	// Depth attachments are also written by in-flight frames.
+	for (size_t i = 0; i < swapBuffers.size(); i++)
 	{
-		return true;
+		auto texture = CreateSharedPtr(new TextureVulkan());
+		param.Format = TextureFormatType::D32;
+		if (!texture->Initialize(nullptr, vkDevice_, vkPhysicalDevice, nullptr, param))
+		{
+			param.Format = TextureFormatType::D32S8;
+			if (!texture->Initialize(nullptr, vkDevice_, vkPhysicalDevice, nullptr, param))
+			{
+				return false;
+			}
+		}
+		depthStencilTextures_.emplace_back(texture);
 	}
-
-	// Avoid when depth buffer creation fails (occurs on AMD GPUs).
-	param.Format = TextureFormatType::D32S8;
-	if (depthStencilTexture_->Initialize(nullptr, vkDevice_, vkPhysicalDevice, nullptr, param))
-	{
-		return true;
-	}
-
-	return false;
+	return true;
 }
 
 bool PlatformVulkan::RecreateSwapchain(const Vec2I& windowSize)
@@ -218,9 +220,19 @@ bool PlatformVulkan::RecreateSwapchain(const Vec2I& windowSize)
 
 	if (!IsSwapchainValid())
 	{
-		SafeRelease(depthStencilTexture_);
+		depthStencilTextures_.clear();
 		return true;
 	}
+
+	// The number of images can change on recreation.
+	if (!vkCmdBuffers.empty())
+	{
+		vkDevice_.freeCommandBuffers(vkCmdPool_, vkCmdBuffers);
+	}
+	vk::CommandBufferAllocateInfo allocInfo;
+	allocInfo.commandPool = vkCmdPool_;
+	allocInfo.commandBufferCount = swapBufferCount;
+	vkCmdBuffers = vkDevice_.allocateCommandBuffers(allocInfo);
 
 	if (!CreateDepthBuffer(swapchainSize_))
 	{
@@ -241,41 +253,47 @@ void PlatformVulkan::CreateRenderPass()
 		std::array<TextureVulkan*, 1> textures;
 		textures[0] = swapBuffers[i].texture;
 
-		renderPass->Initialize(const_cast<const TextureVulkan**>(textures.data()), 1, depthStencilTexture_, nullptr, nullptr);
+		renderPass->Initialize(const_cast<const TextureVulkan**>(textures.data()), 1, depthStencilTextures_[i].get(), nullptr, nullptr);
 
 		renderPasses_.emplace_back(CreateSharedPtr(renderPass));
 	}
 }
 
-vk::Result PlatformVulkan::AcquireNextImage(vk::Semaphore& semaphore)
+vk::Result PlatformVulkan::AcquireNextImage()
 {
-	auto resultValue = vkDevice_.acquireNextImageKHR(swapchain_, UINT64_MAX, semaphore, vk::Fence());
+	vkDevice_.resetFences(imageAvailableFence_);
+	auto resultValue = vkDevice_.acquireNextImageKHR(swapchain_, UINT64_MAX, vk::Semaphore(), imageAvailableFence_);
 
 	if (resultValue.result == vk::Result::eSuccess || resultValue.result == vk::Result::eSuboptimalKHR)
 	{
 		frameIndex = resultValue.value;
+		// The renderer submits through multiple Graphics objects. Complete acquisition
+		// here so every subsequent submission may safely access this image.
+		const auto acquired = vkDevice_.waitForFences(imageAvailableFence_, VK_TRUE, UINT64_MAX);
+		if (acquired != vk::Result::eSuccess)
+		{
+			return acquired;
+		}
 	}
 
 	return resultValue.result;
 }
 
-vk::Fence PlatformVulkan::GetSubmitFence(bool destroy)
+vk::Fence PlatformVulkan::GetSubmitFence()
 {
 	auto& image = swapBuffers[frameIndex];
-	while (image.fence)
+	if (image.fence)
 	{
-		vk::Result fenceRes = vkDevice_.waitForFences(image.fence, VK_TRUE, std::numeric_limits<int>::max());
-		if (fenceRes == vk::Result::eSuccess)
+		if (vkDevice_.waitForFences(image.fence, VK_TRUE, UINT64_MAX) != vk::Result::eSuccess)
 		{
-			if (destroy)
-			{
-				vkDevice_.destroyFence(image.fence);
-			}
-			image.fence = vk::Fence();
+			throw "Invalid waitForFences";
 		}
+		vkDevice_.resetFences(image.fence);
 	}
-
-	image.fence = vkDevice_.createFence(vk::FenceCreateFlags());
+	else
+	{
+		image.fence = vkDevice_.createFence(vk::FenceCreateFlags());
+	}
 	return image.fence;
 }
 
@@ -338,10 +356,10 @@ void PlatformVulkan::Reset()
 			vkPipelineCache_ = nullptr;
 		}
 
-		if (vkPresentComplete_)
+		if (imageAvailableFence_)
 		{
-			vkDevice_.destroySemaphore(vkPresentComplete_);
-			vkPresentComplete_ = nullptr;
+			vkDevice_.destroyFence(imageAvailableFence_);
+			imageAvailableFence_ = nullptr;
 		}
 
 		if (vkCmdBuffers.size() > 0)
@@ -442,7 +460,7 @@ PlatformVulkan::~PlatformVulkan()
 
 	Reset();
 
-	SafeRelease(depthStencilTexture_);
+	depthStencilTextures_.clear();
 	/*
 	if (depthStencilBuffer.image)
 	{
@@ -512,7 +530,7 @@ bool PlatformVulkan::Initialize(Window* window, bool waitVSync)
 	{
 		Reset();
 
-		SafeRelease(depthStencilTexture_);
+		depthStencilTextures_.clear();
 
 		if (vkDevice_)
 		{
@@ -707,10 +725,7 @@ bool PlatformVulkan::Initialize(Window* window, bool waitVSync)
 			return false;
 		}
 
-		// create semaphore
-		vk::SemaphoreCreateInfo semaphoreCreateInfo;
-
-		vkPresentComplete_ = vkDevice_.createSemaphore(semaphoreCreateInfo);
+		imageAvailableFence_ = vkDevice_.createFence(vk::FenceCreateFlags());
 
 		// create command buffer
 		vk::CommandBufferAllocateInfo allocInfo;
@@ -755,7 +770,7 @@ bool PlatformVulkan::NewFrame()
 
 	if (IsSwapchainValid())
 	{
-		auto acquireResult = AcquireNextImage(vkPresentComplete_);
+		auto acquireResult = AcquireNextImage();
 		if (acquireResult == vk::Result::eErrorOutOfDateKHR)
 		{
 			vkDevice_.waitIdle();
@@ -766,7 +781,7 @@ bool PlatformVulkan::NewFrame()
 
 			if (IsSwapchainValid())
 			{
-				acquireResult = AcquireNextImage(vkPresentComplete_);
+				acquireResult = AcquireNextImage();
 			}
 		}
 
@@ -789,7 +804,8 @@ void PlatformVulkan::Present()
 		return;
 	}
 
-	// waiting or empty command
+	// Reuse only this image's presentation commands after their previous submission.
+	auto fence = GetSubmitFence();
 	auto& cmdBuffer = vkCmdBuffers[frameIndex];
 
 	cmdBuffer.reset(vk::CommandBufferResetFlagBits::eReleaseResources);
@@ -805,13 +821,9 @@ void PlatformVulkan::Present()
 	cmdBuffer.end();
 
 	{
-		vk::PipelineStageFlags pipelineStages = vk::PipelineStageFlagBits::eBottomOfPipe;
 		vk::SubmitInfo submitInfo;
-		submitInfo.pWaitDstStageMask = &pipelineStages;
-
-		// send semaphore to be need to wait
-		submitInfo.waitSemaphoreCount = 1;
-		submitInfo.pWaitSemaphores = &vkPresentComplete_;
+		// Image acquisition completed in NewFrame(). Queue ordering and the transition
+		// barriers order this submission after rendering, without a CPU frame-end wait.
 
 		// set command
 		submitInfo.commandBufferCount = 1;
@@ -821,13 +833,7 @@ void PlatformVulkan::Present()
 		submitInfo.signalSemaphoreCount = 1;
 		submitInfo.pSignalSemaphores = &swapBuffers[frameIndex].renderComplete;
 
-		vk::Fence fence = GetSubmitFence(true);
 		vkQueue.submit(submitInfo, fence);
-		vk::Result fenceRes = vkDevice_.waitForFences(fence, VK_TRUE, std::numeric_limits<int>::max());
-		if (fenceRes != vk::Result::eSuccess)
-		{
-			throw "Invalid waitForFences";
-		}
 	}
 
 	const auto result = Present(swapBuffers[frameIndex].renderComplete);

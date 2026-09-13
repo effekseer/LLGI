@@ -210,6 +210,8 @@ int main()
 		if (!platform->NewFrame())
 			break;
 
+		// This example reuses a single command list; Present does not wait for it.
+		commandList->WaitUntilCompleted();
 		sfMemoryPool->NewFrame();
 
 		auto renderPass = platform->GetCurrentScreen(color, true);

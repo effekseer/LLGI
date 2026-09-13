@@ -32,6 +32,9 @@ public:
 	~Platform() override = default;
 
 	virtual bool NewFrame();
+	// Submit presentation without waiting for all GPU work to finish. The caller
+	// must wait before reusing command lists or transient resources. Use
+	// Graphics::WaitFinish() when full completion is required, independently of VSync.
 	virtual void Present();
 	virtual Graphics* CreateGraphics();
 	virtual DeviceType GetDeviceType() const { return DeviceType::Default; }

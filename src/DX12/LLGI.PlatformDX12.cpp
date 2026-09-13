@@ -1,6 +1,7 @@
 #include "LLGI.PlatformDX12.h"
 #include "../Win/LLGI.WindowWin.h"
 #include "LLGI.GraphicsDX12.h"
+#include <stdexcept>
 
 namespace LLGI
 {
@@ -74,8 +75,11 @@ PlatformDX12::~PlatformDX12()
 		SafeRelease(commandAllocator);
 	}
 
-	SafeRelease(commandListStart);
-	SafeRelease(commandListPresent);
+	for (int32_t i = 0; i < SwapBufferCount; i++)
+	{
+		SafeRelease(commandListsStart_[i]);
+		SafeRelease(commandListsPresent_[i]);
+	}
 	SafeRelease(commandQueue);
 	SafeRelease(fence);
 	SafeRelease(device);
@@ -379,26 +383,20 @@ bool PlatformDX12::Initialize(Window* window, bool waitVSync)
 		}
 	}
 
-	// Create Command List
-	hr = device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, commandAllocators[0], NULL, IID_PPV_ARGS(&commandListStart));
-	if (FAILED(hr))
+	// Each back buffer owns the commands and allocator used for its transitions.
+	for (int32_t i = 0; i < SwapBufferCount; i++)
 	{
-		auto msg = (std::string("Error : ") + std::string(__FILE__) + " : " + std::to_string(__LINE__) + std::string(" : ") +
-					std::system_category().message(hr));
-		::LLGI::Log(::LLGI::LogType::Error, msg.c_str());
-		goto FAILED_EXIT;
+		hr = device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, commandAllocators[i], nullptr,
+			IID_PPV_ARGS(&commandListsStart_[i]));
+		if (FAILED(hr))
+			goto FAILED_EXIT;
+		commandListsStart_[i]->Close();
+		hr = device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, commandAllocators[i], nullptr,
+			IID_PPV_ARGS(&commandListsPresent_[i]));
+		if (FAILED(hr))
+			goto FAILED_EXIT;
+		commandListsPresent_[i]->Close();
 	}
-	commandListStart->Close();
-
-	hr = device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, commandAllocators[0], NULL, IID_PPV_ARGS(&commandListPresent));
-	if (FAILED(hr))
-	{
-		auto msg = (std::string("Error : ") + std::string(__FILE__) + " : " + std::to_string(__LINE__) + std::string(" : ") +
-					std::system_category().message(hr));
-		::LLGI::Log(::LLGI::LogType::Error, msg.c_str());
-		goto FAILED_EXIT;
-	}
-	commandListPresent->Close();
 
 	return true;
 
@@ -417,8 +415,11 @@ FAILED_EXIT:;
 		SafeRelease(commandAllocator);
 	}
 
-	SafeRelease(commandListStart);
-	SafeRelease(commandListPresent);
+	for (int32_t i = 0; i < SwapBufferCount; i++)
+	{
+		SafeRelease(commandListsStart_[i]);
+		SafeRelease(commandListsPresent_[i]);
+	}
 	SafeRelease(commandQueue);
 	SafeRelease(fence);
 	SafeRelease(device);
@@ -447,8 +448,16 @@ bool PlatformDX12::NewFrame()
 
 	frameIndex = swapChain->GetCurrentBackBufferIndex();
 
-	commandAllocators.at(0)->Reset();
-	commandListStart->Reset(commandAllocators.at(0), nullptr);
+	// Wait only for the back buffer whose allocator is about to be reset.
+	if (fence->GetCompletedValue() < frameFenceValues_[frameIndex])
+	{
+		if (FAILED(fence->SetEventOnCompletion(frameFenceValues_[frameIndex], fenceEvent)))
+			return false;
+		WaitForSingleObject(fenceEvent, INFINITE);
+	}
+	auto commandListStart = commandListsStart_[frameIndex];
+	commandAllocators[frameIndex]->Reset();
+	commandListStart->Reset(commandAllocators[frameIndex], nullptr);
 
 	renderTargets_[frameIndex]->ResourceBarrier(commandListStart, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
@@ -464,7 +473,8 @@ bool PlatformDX12::NewFrame()
 
 void PlatformDX12::Present()
 {
-	commandListPresent->Reset(commandAllocators.at(0), nullptr);
+	auto commandListPresent = commandListsPresent_[frameIndex];
+	commandListPresent->Reset(commandAllocators[frameIndex], nullptr);
 
 	renderTargets_[frameIndex]->ResourceBarrier(commandListPresent, D3D12_RESOURCE_STATE_PRESENT);
 
@@ -474,7 +484,12 @@ void PlatformDX12::Present()
 	commandQueue->ExecuteCommandLists(1, commandList);
 
 	swapChain->Present(waitVSync_ ? 1 : 0, 0);
-	Wait();
+	const auto submittedValue = fenceValue++;
+	if (FAILED(commandQueue->Signal(fence, submittedValue)))
+	{
+		throw std::runtime_error("Failed to signal the presentation fence.");
+	}
+	frameFenceValues_[frameIndex] = submittedValue;
 
 	inFrame_ = false;
 }

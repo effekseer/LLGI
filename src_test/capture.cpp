@@ -89,6 +89,7 @@ void test_capture_texture(LLGI::DeviceType deviceType)
 		platform->Present();
 		count++;
 	}
+	graphics->WaitFinish();
 }
 
 void test_capture(LLGI::DeviceType deviceType, LLGI::Vec2I windowSize)
@@ -185,6 +186,7 @@ void test_capture(LLGI::DeviceType deviceType, LLGI::Vec2I windowSize)
 			count++;
 		}
 
+	graphics->WaitFinish();
 	pips.clear();
 }
 

@@ -251,9 +251,9 @@ void test_mipmap(LLGI::DeviceType deviceType)
 			count++;
 		}
 
-	pips.clear();
-
 	graphics->WaitFinish();
+
+	pips.clear();
 
 	LLGI::SafeRelease(sfMemoryPool);
 	LLGI::SafeRelease(textureDrawn);
