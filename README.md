@@ -186,6 +186,12 @@ If you want Vulkan shader compilation through
 `LLGI::CreateCompiler(DeviceType::Vulkan)` or the `Compile.*` tests on Vulkan,
 configure with `-DBUILD_VULKAN_COMPILER=ON`.
 
+`--filter=TextureUpload.*` runs the same RGBA8 upload checks on the selected
+backend (DirectX 12, Metal, Vulkan, or WebGPU). These tests compare every plane
+of both mip levels for 3D and array textures, including odd dimensions. Only
+the native readback helper differs between backends. The WebGPU browser CTest
+also includes these checks.
+
 ## Examples
 
 When `BUILD_EXAMPLE=ON`, the following targets are built:

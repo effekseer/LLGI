@@ -9,7 +9,10 @@ if(BUILD_WEBGPU_BROWSER_TEST)
       TextureDataGenerator.h
       TextureRenderTestHelper.cpp
       TextureRenderTestHelper.h
+      TextureUploadReadback.cpp
+      TextureUploadReadback.h
       test.h
+      test_texture_upload.cpp
       test_webgpu_browser.cpp)
 else()
   file(GLOB files CONFIGURE_DEPENDS *.h *.cpp)
@@ -18,13 +21,22 @@ endif()
 
 add_executable(LLGI_Test ${files})
 
+if(BUILD_WEBGPU)
+  target_compile_definitions(LLGI_Test PRIVATE ENABLE_WEBGPU)
+endif()
+
+if(BUILD_VULKAN)
+  find_package(Vulkan REQUIRED)
+  target_include_directories(LLGI_Test PRIVATE ${Vulkan_INCLUDE_DIRS})
+endif()
+
 if(BUILD_WEBGPU_BROWSER_TEST AND NOT EMSCRIPTEN)
   message(FATAL_ERROR "BUILD_WEBGPU_BROWSER_TEST requires an Emscripten CMake toolchain.")
 endif()
 
 if(APPLE)
 
-  target_sources(LLGI_Test PRIVATE test_texture_upload_metal.mm)
+  target_sources(LLGI_Test PRIVATE TextureUploadReadbackMetal.mm)
 
   find_library(COCOA_LIBRARY Cocoa)
   find_library(METAL_LIBRARY Metal)
@@ -90,7 +102,7 @@ if(BUILD_WEBGPU_BROWSER_TEST AND EMSCRIPTEN)
   if(NODE_EXE)
     set(llgi_webgpu_browser_test_command
         ${NODE_EXE} ${CMAKE_CURRENT_SOURCE_DIR}/browser/run_webgpu_browser_test.mjs
-        $<TARGET_FILE:LLGI_Test> --filter=WebGPUBrowser.*)
+        $<TARGET_FILE:LLGI_Test> "--filter=WebGPUBrowser.*|TextureUpload.*")
     if(BUILD_WEBGPU_BROWSER_THREADS)
       list(APPEND llgi_webgpu_browser_test_command --cross-origin-isolated)
     endif()
