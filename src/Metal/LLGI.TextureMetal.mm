@@ -153,7 +153,9 @@ void TextureMetal::Write(const uint8_t* data)
 							{static_cast<uint32_t>(imageSize.X), static_cast<uint32_t>(imageSize.Y), static_cast<uint32_t>(imageSize.Z)}};
 
 		auto bytes_per_row = GetTextureRowPitch(format, imageSize);
-		auto bytes_per_image = GetTextureMemorySize(format, imageSize);
+		auto region_size = GetTextureMemorySize(format, imageSize);
+		// Metal expects the stride of one Z plane, even when the region spans a 3D mip.
+		auto bytes_per_image = region_size / imageSize.Z;
 		const int32_t sliceCount = isArray ? mipSize.Z : 1;
 
 		for (int32_t slice = 0; slice < sliceCount; slice++)
@@ -164,7 +166,7 @@ void TextureMetal::Write(const uint8_t* data)
 						  withBytes:data + offset
 						bytesPerRow:bytes_per_row
 					  bytesPerImage:bytes_per_image];
-			offset += bytes_per_image;
+			offset += region_size;
 		}
 	}
 }

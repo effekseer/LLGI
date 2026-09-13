@@ -24,6 +24,8 @@ endif()
 
 if(APPLE)
 
+  target_sources(LLGI_Test PRIVATE test_texture_upload_metal.mm)
+
   find_library(COCOA_LIBRARY Cocoa)
   find_library(METAL_LIBRARY Metal)
   find_library(APPKIT_LIBRARY AppKit)
