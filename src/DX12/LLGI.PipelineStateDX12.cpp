@@ -41,6 +41,7 @@ void PipelineStateDX12::SetShader(ShaderStageType stage, Shader* shader)
 
 bool PipelineStateDX12::Compile()
 {
+	if (!ValidateVertexLayout()) return false;
 	byteAddressSRVs_.fill(false);
 	byteAddressUAVs_.fill(false);
 	for (auto shader : shaders_)
@@ -271,6 +272,7 @@ bool PipelineStateDX12::CreatePipelineState()
 
 	for (int i = 0; i < VertexLayoutCount; i++)
 	{
+		if (VertexLayoutOffsets[i] >= 0) elementOffset = VertexLayoutOffsets[i];
 		elementDescs[i].SemanticName = this->VertexLayoutNames[i].c_str();
 		elementDescs[i].SemanticIndex = this->VertexLayoutSemantics[i];
 		elementDescs[i].AlignedByteOffset = elementOffset;

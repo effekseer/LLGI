@@ -81,6 +81,7 @@ void PipelineStateVulkan::SetShader(ShaderStageType stage, Shader* shader)
 
 bool PipelineStateVulkan::Compile()
 {
+	if (!ValidateVertexLayout()) return false;
 	if (shaders[static_cast<int>(ShaderStageType::Compute)] != nullptr)
 	{
 		return CreateComputePipeline();
@@ -131,12 +132,14 @@ bool PipelineStateVulkan::CreateGraphicsPipeline()
 	std::vector<vk::VertexInputAttributeDescription> attribDescs;
 
 	int vertexOffset = 0;
+	int vertexExtent = 0;
 	for (int i = 0; i < VertexLayoutCount; i++)
 	{
 		vk::VertexInputAttributeDescription attribDesc;
 
+		if (VertexLayoutOffsets[i] >= 0) vertexOffset = VertexLayoutOffsets[i];
 		attribDesc.binding = 0;
-		attribDesc.location = i;
+		attribDesc.location = VertexLayoutLocations[i] >= 0 ? VertexLayoutLocations[i] : i;
 		attribDesc.offset = vertexOffset;
 
 		if (VertexLayouts[i] == VertexLayoutFormat::R32G32B32_FLOAT)
@@ -180,12 +183,13 @@ bool PipelineStateVulkan::CreateGraphicsPipeline()
 			return false;
 		}
 
+		vertexExtent = std::max(vertexExtent, vertexOffset);
 		attribDescs.push_back(attribDesc);
 	}
 
 	vk::VertexInputBindingDescription bindDesc;
 	bindDesc.binding = 0;
-	bindDesc.stride = VertexBufferStride > 0 ? VertexBufferStride : vertexOffset;
+	bindDesc.stride = VertexBufferStride > 0 ? VertexBufferStride : vertexExtent;
 	bindDesc.inputRate = vk::VertexInputRate::eVertex;
 	bindDescs.push_back(bindDesc);
 

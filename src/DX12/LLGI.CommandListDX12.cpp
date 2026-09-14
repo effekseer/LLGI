@@ -574,6 +574,15 @@ void CommandListDX12::EndWithPlatform()
 	CommandList::EndWithPlatform();
 }
 
+bool CommandListDX12::SetViewport(float x, float y, float width, float height, float minDepth, float maxDepth)
+{
+	if (!ValidateViewport(x, y, width, height, minDepth, maxDepth)) return false;
+	if (currentCommandList_ == nullptr) return false;
+	D3D12_VIEWPORT viewport{x, y, width, height, minDepth, maxDepth};
+	currentCommandList_->RSSetViewports(1, &viewport);
+	return true;
+}
+
 void CommandListDX12::BeginRenderPass(RenderPass* renderPass)
 {
 	assert(currentCommandList_ != nullptr);
@@ -1326,7 +1335,7 @@ void CommandListDX12::ClearDepth()
 	const auto clearFlags = HasStencil(depthTexture->GetFormat()) ? D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL : D3D12_CLEAR_FLAG_DEPTH;
 
 	auto handle = rt->GetHandleDSV();
-	currentCommandList_->ClearDepthStencilView(handle[0], clearFlags, 1.0f, 0, 0, nullptr);
+	currentCommandList_->ClearDepthStencilView(handle[0], clearFlags, rt->GetClearDepth(), 0, 0, nullptr);
 }
 
 ID3D12GraphicsCommandList* CommandListDX12::GetCommandList() const { return commandList_.get(); }

@@ -43,6 +43,20 @@ public:
 
 	void SetWindowSize(const Vec2I& windowSize) override;
 
+	bool Supports(GraphicsCapability capability) const override
+	{
+		switch (capability)
+		{
+		case GraphicsCapability::Viewport:
+		case GraphicsCapability::DepthClearValue:
+		case GraphicsCapability::VertexAttributeOffsets:
+		case GraphicsCapability::VertexAttributeLocations:
+			return true;
+		default:
+			return false;
+		}
+	}
+
 	void Execute(CommandList* commandList) override;
 
 	void WaitFinish() override;

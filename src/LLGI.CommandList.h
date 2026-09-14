@@ -85,6 +85,7 @@ protected:
 	std::array<BindingStorageBuffer, NumStorageBuffer> storageBuffers_;
 
 protected:
+	bool ValidateViewport(float x, float y, float width, float height, float minDepth, float maxDepth) const;
 	void GetCurrentVertexBuffer(BindingVertexBuffer& buffer, bool& isDirtied);
 	void GetCurrentIndexBuffer(BindingIndexBuffer& buffer, bool& isDirtied);
 	void GetCurrentPipelineState(PipelineState*& pipelineState, bool& isDirtied);
@@ -130,6 +131,9 @@ public:
 
 	virtual void End();
 	virtual void EndWithPlatform();
+
+	// Returns false when the viewport is invalid or no native render pass is active.
+	virtual bool SetViewport(float x, float y, float width, float height, float minDepth = 0.0f, float maxDepth = 1.0f);
 
 	virtual void SetScissor(int32_t x, int32_t y, int32_t width, int32_t height);
 	virtual void Draw(int32_t primitiveCount, int32_t instanceCount = 1);

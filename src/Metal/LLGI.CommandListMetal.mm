@@ -404,6 +404,15 @@ void CommandListMetal::GenerateMipMap(Texture* src)
 	[blitEncoder endEncoding];
 }
 
+bool CommandListMetal::SetViewport(float x, float y, float width, float height, float minDepth, float maxDepth)
+{
+	if (!ValidateViewport(x, y, width, height, minDepth, maxDepth)) return false;
+	if (renderEncoder_ == nil) return false;
+	MTLViewport viewport{static_cast<double>(x), static_cast<double>(y), static_cast<double>(width), static_cast<double>(height), static_cast<double>(minDepth), static_cast<double>(maxDepth)};
+	[renderEncoder_ setViewport:viewport];
+	return true;
+}
+
 void CommandListMetal::BeginRenderPass(RenderPass* renderPass)
 {
 	@autoreleasepool
@@ -441,7 +450,7 @@ void CommandListMetal::BeginRenderPass(RenderPass* renderPass)
 		if (rp->GetIsDepthCleared())
 		{
 			rpd.depthAttachment.loadAction = MTLLoadActionClear;
-			rpd.depthAttachment.clearDepth = 1.0;
+			rpd.depthAttachment.clearDepth = rp->GetClearDepth();
 
 			if (rp->depthStencilFormat == MTLPixelFormatDepth32Float_Stencil8
 #if !(TARGET_OS_IPHONE) && !(TARGET_OS_SIMULATOR)

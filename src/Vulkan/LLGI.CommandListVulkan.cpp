@@ -685,6 +685,13 @@ void CommandListVulkan::CopyBuffer(Buffer* src, Buffer* dst)
 	RegisterReferencedObject(dst);
 }
 
+bool CommandListVulkan::SetViewport(float x, float y, float width, float height, float minDepth, float maxDepth)
+{
+	if (!ValidateViewport(x, y, width, height, minDepth, maxDepth)) return false;
+	currentCommandBuffer_.setViewport(0, vk::Viewport(x, y, width, height, minDepth, maxDepth));
+	return true;
+}
+
 void CommandListVulkan::BeginRenderPass(RenderPass* renderPass)
 {
 	renderPass_ = static_cast<RenderPassVulkan*>(renderPass);
@@ -700,7 +707,7 @@ void CommandListVulkan::BeginRenderPass(RenderPass* renderPass)
 														renderPass_->GetClearColor().G / 255.0f,
 														renderPass_->GetClearColor().B / 255.0f,
 														renderPass_->GetClearColor().A / 255.0f});
-	vk::ClearDepthStencilValue clearDepth(1.0f, 0);
+	vk::ClearDepthStencilValue clearDepth(renderPass->GetClearDepth(), 0);
 
 	vk::ImageSubresourceRange colorSubRange;
 	colorSubRange.aspectMask = vk::ImageAspectFlagBits::eColor;

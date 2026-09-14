@@ -49,6 +49,10 @@ public:
 
 	//! only for DirectX12
 	std::array<int32_t, VertexLayoutMax> VertexLayoutSemantics;
+	// -1 preserves the legacy packed offset / sequential shader location.
+	// Explicit shader locations must be less than VertexLayoutMax.
+	std::array<int32_t, VertexLayoutMax> VertexLayoutOffsets;
+	std::array<int32_t, VertexLayoutMax> VertexLayoutLocations;
 	int32_t VertexLayoutCount = 0;
 	int32_t VertexBufferStride = 0;
 
@@ -59,6 +63,7 @@ public:
 	virtual void SetRenderPassPipelineState(RenderPassPipelineState* renderPassPipelineState);
 
 	virtual bool Compile();
+	bool ValidateVertexLayout() const;
 };
 
 } // namespace LLGI

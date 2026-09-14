@@ -70,6 +70,7 @@ public:
 	bool BeginWithPlatform(void* platformContextPtr) override;
 	void EndWithPlatform() override;
 
+	bool SetViewport(float x, float y, float width, float height, float minDepth = 0.0f, float maxDepth = 1.0f) override;
 	void BeginRenderPass(RenderPass* renderPass) override;
 	void EndRenderPass() override;
 	void Draw(int32_t primitiveCount, int32_t instanceCount) override;

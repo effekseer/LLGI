@@ -184,6 +184,7 @@ bool PipelineStateWebGPU::HasBinding(uint32_t group, uint32_t binding, ShaderRes
 
 bool PipelineStateWebGPU::Compile()
 {
+	if (!ValidateVertexLayout()) return false;
 	bindings_.clear();
 	hasBindingReflection_ = false;
 	for (auto shader : shaders_)
@@ -254,14 +255,17 @@ bool PipelineStateWebGPU::Compile()
 	bufferLayouts[0].attributes = attributes.data();
 
 	int offset = 0;
+	int vertexExtent = 0;
 	for (int i = 0; i < VertexLayoutCount; i++)
 	{
+		if (VertexLayoutOffsets[i] >= 0) offset = VertexLayoutOffsets[i];
 		attributes[i].format = Convert(VertexLayouts[i]);
 		attributes[i].offset = offset;
-		attributes[i].shaderLocation = i;
+		attributes[i].shaderLocation = VertexLayoutLocations[i] >= 0 ? VertexLayoutLocations[i] : i;
 		offset += GetSize(VertexLayouts[i]);
+		vertexExtent = std::max(vertexExtent, offset);
 	}
-	bufferLayouts[0].arrayStride = VertexBufferStride > 0 ? VertexBufferStride : offset;
+	bufferLayouts[0].arrayStride = VertexBufferStride > 0 ? VertexBufferStride : vertexExtent;
 
 	auto pixelShader = static_cast<ShaderWebGPU*>(shaders_[static_cast<int>(ShaderStageType::Pixel)]);
 

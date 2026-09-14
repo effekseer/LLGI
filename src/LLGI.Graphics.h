@@ -148,6 +148,7 @@ private:
 	bool isColorCleared_ = false;
 
 	bool isDepthCleared_ = false;
+	float clearDepth_ = 1.0f;
 
 	Color8 color_;
 
@@ -179,6 +180,9 @@ public:
 	virtual bool GetIsColorCleared() const { return isColorCleared_; }
 
 	virtual bool GetIsDepthCleared() const { return isDepthCleared_; }
+
+	float GetClearDepth() const { return clearDepth_; }
+	void SetClearDepth(float depth) { clearDepth_ = depth; }
 
 	virtual Color8 GetClearColor() const { return color_; }
 
@@ -223,6 +227,14 @@ public:
 	@note
 	please call WaitFinish before releasing
 */
+enum class GraphicsCapability
+{
+	Viewport,
+	DepthClearValue,
+	VertexAttributeOffsets,
+	VertexAttributeLocations,
+};
+
 class Graphics : public ReferenceObject
 {
 protected:
@@ -248,6 +260,9 @@ public:
 	virtual void WaitFinish() {}
 
 	virtual bool GetIsMipmapGenerationSupportedOnTextureLoad() const { return false; }
+
+	// New backend operations are opt-in. Existing/private backends retain legacy behavior.
+	virtual bool Supports(GraphicsCapability capability) const { return false; }
 
 	virtual Buffer* CreateBuffer(BufferUsageType usage, int32_t size);
 

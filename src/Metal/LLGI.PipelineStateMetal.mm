@@ -24,6 +24,7 @@ bool LogMetalError(NSError* error)
 
 bool PipelineStateMetal::Compile(PipelineState* self, Graphics* graphics)
 {
+	if (!self->ValidateVertexLayout()) return false;
 	auto pipstate = static_cast<PipelineStateMetal*>(self);
 	if (pipstate->GetShaders()[static_cast<int>(ShaderStageType::Compute)])
 	{
@@ -50,50 +51,54 @@ bool PipelineStateMetal::CreateRenderPipelineState(PipelineState* self, Graphics
 		MTLVertexDescriptor* vertexDescriptor = [MTLVertexDescriptor vertexDescriptor];
 
 		int vertexOffset = 0;
+		int vertexExtent = 0;
 		for (int i = 0; i < pipstate->VertexLayoutCount; i++)
 		{
-			vertexDescriptor.attributes[i].offset = vertexOffset;
+			if (pipstate->VertexLayoutOffsets[i] >= 0) vertexOffset = pipstate->VertexLayoutOffsets[i];
+			const int location = pipstate->VertexLayoutLocations[i] >= 0 ? pipstate->VertexLayoutLocations[i] : i;
+			if (location >= VertexLayoutMax) return false;
+			vertexDescriptor.attributes[location].offset = vertexOffset;
 
 			if (pipstate->VertexLayouts[i] == VertexLayoutFormat::R32G32B32_FLOAT)
 			{
-				vertexDescriptor.attributes[i].format = MTLVertexFormatFloat3;
-				vertexDescriptor.attributes[i].bufferIndex = VertexBufferIndex;
+				vertexDescriptor.attributes[location].format = MTLVertexFormatFloat3;
+				vertexDescriptor.attributes[location].bufferIndex = VertexBufferIndex;
 				vertexOffset += sizeof(float) * 3;
 			}
 			else if (pipstate->VertexLayouts[i] == VertexLayoutFormat::R32G32B32A32_FLOAT)
 			{
-				vertexDescriptor.attributes[i].format = MTLVertexFormatFloat4;
-				vertexDescriptor.attributes[i].bufferIndex = VertexBufferIndex;
+				vertexDescriptor.attributes[location].format = MTLVertexFormatFloat4;
+				vertexDescriptor.attributes[location].bufferIndex = VertexBufferIndex;
 				vertexOffset += sizeof(float) * 4;
 			}
 			else if (pipstate->VertexLayouts[i] == VertexLayoutFormat::R32G32_FLOAT)
 			{
-				vertexDescriptor.attributes[i].format = MTLVertexFormatFloat2;
-				vertexDescriptor.attributes[i].bufferIndex = VertexBufferIndex;
+				vertexDescriptor.attributes[location].format = MTLVertexFormatFloat2;
+				vertexDescriptor.attributes[location].bufferIndex = VertexBufferIndex;
 				vertexOffset += sizeof(float) * 2;
 			}
 			else if (pipstate->VertexLayouts[i] == VertexLayoutFormat::R32_FLOAT)
 			{
-				vertexDescriptor.attributes[i].format = MTLVertexFormatFloat;
-				vertexDescriptor.attributes[i].bufferIndex = VertexBufferIndex;
+				vertexDescriptor.attributes[location].format = MTLVertexFormatFloat;
+				vertexDescriptor.attributes[location].bufferIndex = VertexBufferIndex;
 				vertexOffset += sizeof(float) * 1;
 			}
 			else if (pipstate->VertexLayouts[i] == VertexLayoutFormat::R8G8B8A8_UINT)
 			{
-				vertexDescriptor.attributes[i].format = MTLVertexFormatUChar4;
-				vertexDescriptor.attributes[i].bufferIndex = VertexBufferIndex;
+				vertexDescriptor.attributes[location].format = MTLVertexFormatUChar4;
+				vertexDescriptor.attributes[location].bufferIndex = VertexBufferIndex;
 				vertexOffset += sizeof(float);
 			}
 			else if (pipstate->VertexLayouts[i] == VertexLayoutFormat::R8G8B8A8_UNORM)
 			{
-				vertexDescriptor.attributes[i].format = MTLVertexFormatUChar4Normalized;
-				vertexDescriptor.attributes[i].bufferIndex = VertexBufferIndex;
+				vertexDescriptor.attributes[location].format = MTLVertexFormatUChar4Normalized;
+				vertexDescriptor.attributes[location].bufferIndex = VertexBufferIndex;
 				vertexOffset += sizeof(float);
 			}
 			else if (pipstate->VertexLayouts[i] == VertexLayoutFormat::R16G16_UNORM)
 			{
-				vertexDescriptor.attributes[i].format = MTLVertexFormatUShort2Normalized;
-				vertexDescriptor.attributes[i].bufferIndex = VertexBufferIndex;
+				vertexDescriptor.attributes[location].format = MTLVertexFormatUShort2Normalized;
+				vertexDescriptor.attributes[location].bufferIndex = VertexBufferIndex;
 				vertexOffset += sizeof(float);
 			}
 			else
@@ -101,11 +106,12 @@ bool PipelineStateMetal::CreateRenderPipelineState(PipelineState* self, Graphics
 				Log(LogType::Error, "Unimplemented VertexLoayoutFormat");
 				return false;
 			}
+			vertexExtent = std::max(vertexExtent, vertexOffset);
 		}
 
 		vertexDescriptor.layouts[VertexBufferIndex].stepRate = 1;
 		vertexDescriptor.layouts[VertexBufferIndex].stepFunction = MTLVertexStepFunctionPerVertex;
-		vertexDescriptor.layouts[VertexBufferIndex].stride = pipstate->VertexBufferStride > 0 ? pipstate->VertexBufferStride : vertexOffset;
+		vertexDescriptor.layouts[VertexBufferIndex].stride = pipstate->VertexBufferStride > 0 ? pipstate->VertexBufferStride : vertexExtent;
 
 		pipelineStateDescriptor_.vertexDescriptor = vertexDescriptor;
 

@@ -29,13 +29,13 @@ void RenderPassWebGPU::RefreshDescriptor()
 		{
 			depthStencilAttachiment_.depthLoadOp = wgpu::LoadOp::Clear;
 			depthStencilAttachiment_.depthStoreOp = wgpu::StoreOp::Store;
-			depthStencilAttachiment_.depthClearValue = 1.0f;
+			depthStencilAttachiment_.depthClearValue = GetClearDepth();
 		}
 		else
 		{
 			depthStencilAttachiment_.depthLoadOp = wgpu::LoadOp::Load;
 			depthStencilAttachiment_.depthStoreOp = wgpu::StoreOp::Store;
-			depthStencilAttachiment_.depthClearValue = 1.0f;
+			depthStencilAttachiment_.depthClearValue = GetClearDepth();
 		}
 
 		auto depthTexture = GetDepthTexture();

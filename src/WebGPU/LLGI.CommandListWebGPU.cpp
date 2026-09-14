@@ -223,6 +223,14 @@ void CommandListWebGPU::EndWithPlatform()
 	CommandList::EndWithPlatform();
 }
 
+bool CommandListWebGPU::SetViewport(float x, float y, float width, float height, float minDepth, float maxDepth)
+{
+	if (!ValidateViewport(x, y, width, height, minDepth, maxDepth)) return false;
+	if (renderPassEncorder_ == nullptr) return false;
+	renderPassEncorder_.SetViewport(x, y, width, height, minDepth, maxDepth);
+	return true;
+}
+
 void CommandListWebGPU::BeginRenderPass(RenderPass* renderPass)
 {
 	EndComputePass();

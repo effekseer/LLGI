@@ -3,9 +3,19 @@
 #include "LLGI.Buffer.h"
 #include "LLGI.PipelineState.h"
 #include "LLGI.Texture.h"
+#include <cmath>
 
 namespace LLGI
 {
+
+bool CommandList::SetViewport(float, float, float, float, float, float) { return false; }
+
+bool CommandList::ValidateViewport(float x, float y, float width, float height, float minDepth, float maxDepth) const
+{
+	return isInRenderPass_ && std::isfinite(x) && std::isfinite(y) && std::isfinite(width) && std::isfinite(height) &&
+		std::isfinite(minDepth) && std::isfinite(maxDepth) && x >= 0.0f && y >= 0.0f && width > 0.0f && height > 0.0f &&
+		minDepth >= 0.0f && maxDepth <= 1.0f && minDepth <= maxDepth;
+}
 
 void CommandList::GetCurrentVertexBuffer(BindingVertexBuffer& buffer, bool& isDirtied)
 {
