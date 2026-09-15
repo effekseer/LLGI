@@ -226,6 +226,10 @@ public:
 	*/
 	virtual void WaitUntilCompleted();
 
+	// Nonblocking query of the latest submission. False means unavailable or failed.
+	// Do not reuse the command list while retaining a snapshot of its completion.
+	virtual bool TryGetCompleted(bool& completed) const { completed = false; return false; }
+
 	bool GetIsInRenderPass() const;
 };
 

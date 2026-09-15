@@ -100,6 +100,7 @@ public:
 	UINT64 GetAndIncFenceValue();
 
 	void WaitUntilCompleted() override;
+	bool TryGetCompleted(bool& completed) const override;
 };
 
 } // namespace LLGI

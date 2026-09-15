@@ -200,7 +200,7 @@ void BufferVulkan::ResourceBarrier(vk::CommandBuffer& commandBuffer, BufferVulka
 								  vk::DependencyFlags(),
 								  0,
 								  nullptr,
-								  0,
+								  1,
 								  &bufferBarrier,
 								  0,
 								  nullptr);

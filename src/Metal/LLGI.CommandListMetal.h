@@ -70,6 +70,7 @@ public:
 	void EndRenderPass() override;
 
 	void WaitUntilCompleted() override;
+	bool TryGetCompleted(bool& completed) const override;
 
 	bool BeginWithPlatform(void* platformContextPtr) override;
 	void EndWithPlatform() override;

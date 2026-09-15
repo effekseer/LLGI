@@ -115,6 +115,7 @@ public:
 	void Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ, int32_t threadX, int32_t threadY, int32_t threadZ) override;
 
 	void WaitUntilCompleted() override;
+	bool TryGetCompleted(bool& completed) const override;
 };
 
 } // namespace LLGI

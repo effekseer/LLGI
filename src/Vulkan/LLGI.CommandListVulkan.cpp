@@ -990,4 +990,20 @@ void CommandListVulkan::WaitUntilCompleted()
 	}
 }
 
+bool CommandListVulkan::TryGetCompleted(bool& completed) const
+{
+	completed = currentSwapBufferIndex_ < 0;
+	if (completed) return true;
+	try
+	{
+		const auto result = graphics_->GetDevice().getFenceStatus(fences_[currentSwapBufferIndex_]);
+		completed = result == vk::Result::eSuccess;
+		return result == vk::Result::eSuccess || result == vk::Result::eNotReady;
+	}
+	catch (const vk::SystemError&)
+	{
+		return false;
+	}
+}
+
 } // namespace LLGI

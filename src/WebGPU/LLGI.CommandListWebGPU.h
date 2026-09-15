@@ -3,6 +3,7 @@
 #include "../LLGI.CommandList.h"
 #include "LLGI.BaseWebGPU.h"
 #include <array>
+#include <atomic>
 #include <vector>
 
 namespace LLGI
@@ -27,6 +28,7 @@ class CommandListWebGPU : public CommandList
 		wgpu::BindGroup bindGroup = nullptr;
 	};
 
+	std::shared_ptr<std::atomic<int>> completion_;
 	wgpu::Device device_;
 	wgpu::CommandBuffer commandBuffer_;
 	wgpu::CommandEncoder commandEncorder_;
@@ -87,6 +89,8 @@ public:
 	void CopyBuffer(Buffer* src, Buffer* dst) override;
 
 	void WaitUntilCompleted() override;
+	bool TryGetCompleted(bool& completed) const override;
+	void TrackSubmission();
 
 	const wgpu::CommandBuffer& GetCommandBuffer() const { return commandBuffer_; }
 };

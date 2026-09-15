@@ -233,6 +233,7 @@ enum class GraphicsCapability
 	DepthClearValue,
 	VertexAttributeOffsets,
 	VertexAttributeLocations,
+	CommandCompletionQuery,
 };
 
 class Graphics : public ReferenceObject

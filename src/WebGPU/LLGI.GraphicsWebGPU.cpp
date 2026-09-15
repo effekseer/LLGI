@@ -136,6 +136,7 @@ void GraphicsWebGPU::Execute(CommandList* commandList)
 	auto commandListWgpu = static_cast<CommandListWebGPU*>(commandList);
 	auto cb = commandListWgpu->GetCommandBuffer();
 	queue_.Submit(1, &cb);
+	commandListWgpu->TrackSubmission();
 }
 
 void GraphicsWebGPU::WaitFinish()

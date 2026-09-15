@@ -1363,4 +1363,11 @@ void CommandListDX12::WaitUntilCompleted()
 	}
 }
 
+bool CommandListDX12::TryGetCompleted(bool& completed) const
+{
+	const auto value = fence_->GetCompletedValue();
+	completed = value != UINT64_MAX && value >= fenceValue_ - 1;
+	return value != UINT64_MAX;
+}
+
 } // namespace LLGI

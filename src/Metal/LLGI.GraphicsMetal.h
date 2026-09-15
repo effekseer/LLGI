@@ -44,6 +44,7 @@ public:
 		switch (capability)
 		{
 		case GraphicsCapability::Viewport:
+		case GraphicsCapability::CommandCompletionQuery:
 		case GraphicsCapability::DepthClearValue:
 		case GraphicsCapability::VertexAttributeOffsets:
 		case GraphicsCapability::VertexAttributeLocations:

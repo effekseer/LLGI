@@ -744,4 +744,22 @@ void CommandListWebGPU::WaitUntilCompleted()
 	}
 }
 
+void CommandListWebGPU::TrackSubmission()
+{
+	auto state = std::make_shared<std::atomic<int>>(0);
+	completion_ = state;
+	device_.GetQueue().OnSubmittedWorkDone(wgpu::CallbackMode::AllowSpontaneous,
+		[state](wgpu::QueueWorkDoneStatus status, wgpu::StringView)
+		{
+			state->store(status == wgpu::QueueWorkDoneStatus::Success ? 1 : -1, std::memory_order_release);
+		});
+}
+
+bool CommandListWebGPU::TryGetCompleted(bool& completed) const
+{
+	const auto value = completion_ ? completion_->load(std::memory_order_acquire) : 1;
+	completed = value == 1;
+	return value >= 0;
+}
+
 } // namespace LLGI

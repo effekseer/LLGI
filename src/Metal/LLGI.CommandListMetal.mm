@@ -509,6 +509,15 @@ void CommandListMetal::EndRenderPass()
 	CommandList::EndRenderPass();
 }
 
+bool CommandListMetal::TryGetCompleted(bool& completed) const
+{
+	completed = false;
+	if (!GetIsCompleted()) return true;
+	if (commandBuffer_ != nil && [commandBuffer_ status] == MTLCommandBufferStatusError) return false;
+	completed = true;
+	return true;
+}
+
 void CommandListMetal::WaitUntilCompleted()
 {
 	if (commandBuffer_ != nullptr)
