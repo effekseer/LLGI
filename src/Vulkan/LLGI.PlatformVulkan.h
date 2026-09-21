@@ -4,6 +4,7 @@
 
 #include "../LLGI.Platform.h"
 #include "LLGI.BaseVulkan.h"
+#include <functional>
 
 #ifdef _WIN32
 #include "../Win/LLGI.WindowWin.h"
@@ -134,6 +135,15 @@ public:
 	~PlatformVulkan() override;
 
 	bool Initialize(Window* window, bool waitVSync);
+
+	// The callback creates a surface owned and destroyed by this platform.
+	// Extension names are consumed only during Initialize; the callback must
+	// leave surface null on failure. A specified format with SRGB_NONLINEAR color space must be supported.
+	// Existing native-window callers are unchanged.
+	bool Initialize(Window* window, bool waitVSync,
+		const std::vector<const char*>& surfaceExtensions,
+		const std::function<VkResult(VkInstance, VkSurfaceKHR*)>& createSurface,
+		vk::Format preferredSurfaceFormat = vk::Format::eUndefined);
 
 	bool NewFrame() override;
 	void Present() override;

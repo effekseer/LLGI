@@ -496,6 +496,14 @@ PlatformVulkan::~PlatformVulkan()
 
 bool PlatformVulkan::Initialize(Window* window, bool waitVSync)
 {
+	return Initialize(window, waitVSync, {}, {});
+}
+
+bool PlatformVulkan::Initialize(Window* window, bool waitVSync,
+	const std::vector<const char*>& surfaceExtensions,
+	const std::function<VkResult(VkInstance, VkSurfaceKHR*)>& createSurface,
+	vk::Format preferredSurfaceFormat)
+{
 	window_ = window;
 	waitVSync_ = waitVSync;
 
@@ -508,7 +516,7 @@ bool PlatformVulkan::Initialize(Window* window, bool waitVSync)
 	appInfo.apiVersion = VK_API_VERSION_1_1;
 
 	// specify extension
-	const std::vector<const char*> extensions = {
+	std::vector<const char*> extensions = {
 		VK_KHR_SURFACE_EXTENSION_NAME,
 #ifdef _WIN32
 		VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
@@ -525,6 +533,15 @@ bool PlatformVulkan::Initialize(Window* window, bool waitVSync)
 		VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
 #endif
 	};
+
+	if (createSurface)
+	{
+		extensions = surfaceExtensions;
+#if !defined(NDEBUG)
+		extensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+		extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+#endif
+	}
 
 	auto exitWithError = [this]() -> void
 	{
@@ -597,11 +614,24 @@ bool PlatformVulkan::Initialize(Window* window, bool waitVSync)
 		} _version;
 
 		vk::PhysicalDeviceProperties deviceProperties = vkPhysicalDevice.getProperties();
+		Log(LogType::Info, std::string("Vulkan device: ") + deviceProperties.deviceName.data());
 		memcpy(&_version, &deviceProperties.apiVersion, sizeof(uint32_t));
 		vk::PhysicalDeviceFeatures deviceFeatures = vkPhysicalDevice.getFeatures();
 		// vk::PhysicalDeviceMemoryProperties deviceMemoryProperties = vkPhysicalDevice.getMemoryProperties();
 
 		// create surface
+		if (createSurface)
+		{
+			VkSurfaceKHR surface = VK_NULL_HANDLE;
+			if (createSurface(static_cast<VkInstance>(vkInstance_), &surface) != VK_SUCCESS || surface == VK_NULL_HANDLE)
+			{
+				exitWithError();
+				return false;
+			}
+			surface_ = surface;
+		}
+		else
+		{
 #ifdef _WIN32
 		vk::Win32SurfaceCreateInfoKHR surfaceCreateInfo;
 		surfaceCreateInfo.hinstance = (HINSTANCE)window->GetNativePtr(1);
@@ -617,6 +647,7 @@ bool PlatformVulkan::Initialize(Window* window, bool waitVSync)
 		surfaceCreateInfo.window = ((::Window)window->GetNativePtr(1));
 		surface_ = vkInstance_.createXcbSurfaceKHR(surfaceCreateInfo);
 #endif
+		}
 		// create device
 
 		// find queue for graphics
@@ -705,13 +736,34 @@ bool PlatformVulkan::Initialize(Window* window, bool waitVSync)
 		// get supported formats
 		auto surfaceFormats = vkPhysicalDevice.getSurfaceFormatsKHR(surface_);
 
-		surfaceFormat = vk::Format::eR8G8B8A8Unorm;
-		if (surfaceFormats[0].format != vk::Format::eUndefined)
+		if (surfaceFormats.empty())
 		{
-			surfaceFormat = surfaceFormats[0].format;
+			Log(LogType::Error, "No Vulkan surface formats are available.");
+			exitWithError();
+			return false;
 		}
-
-		surfaceColorSpace = surfaceFormats[0].colorSpace;
+		auto selectedSurfaceFormat = surfaceFormats.front();
+		if (preferredSurfaceFormat != vk::Format::eUndefined)
+		{
+			auto preferred = std::find_if(surfaceFormats.begin(), surfaceFormats.end(),
+				[preferredSurfaceFormat](const vk::SurfaceFormatKHR& candidate)
+				{
+					return (candidate.format == preferredSurfaceFormat || candidate.format == vk::Format::eUndefined) &&
+						candidate.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear;
+				});
+			if (preferred == surfaceFormats.end())
+			{
+				Log(LogType::Error, "Requested Vulkan surface format is not supported.");
+				exitWithError();
+				return false;
+			}
+			selectedSurfaceFormat = *preferred;
+			selectedSurfaceFormat.format = preferredSurfaceFormat;
+		}
+		surfaceFormat = selectedSurfaceFormat.format == vk::Format::eUndefined
+			? vk::Format::eR8G8B8A8Unorm : selectedSurfaceFormat.format;
+		surfaceColorSpace = selectedSurfaceFormat.colorSpace;
+		Log(LogType::Info, "Vulkan surface format: " + std::to_string(static_cast<int>(surfaceFormat)));
 
 		// create swapchain
 		if (!vkPhysicalDevice.getSurfaceSupportKHR(graphicsQueueInd, surface_))
