@@ -487,6 +487,7 @@ bool PipelineStateDX12::CreatePipelineState()
 	}
 
 	pipelineStateDesc.SampleDesc.Count = renderPassPipelineState->Key.SamplingCount;
+	pipelineStateDesc.RasterizerState.MultisampleEnable = renderPassPipelineState->Key.SamplingCount > 1;
 	pipelineStateDesc.SampleMask = UINT_MAX;
 
 	auto hr = graphics_->GetDevice()->CreateGraphicsPipelineState(&pipelineStateDesc, IID_PPV_ARGS(&pipelineState_));
