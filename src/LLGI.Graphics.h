@@ -86,6 +86,9 @@ public:
 	*/
 	virtual void NewFrame();
 
+	// Resource owners must rotate in step with this pool, not a backend default.
+	int32_t GetSwapBufferCount() const { return swapBufferCount_; }
+
 	virtual Buffer* CreateConstantBuffer(int32_t size);
 };
 
