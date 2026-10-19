@@ -144,6 +144,9 @@ ID3D12Resource* CreateResourceBuffer(ID3D12Device* device,
 
 DXGI_FORMAT ConvertFormat(TextureFormatType format)
 {
+	if (format == TextureFormatType::B8G8R8A8_UNORM)
+		return DXGI_FORMAT_B8G8R8A8_UNORM;
+
 	if (format == TextureFormatType::R8G8B8A8_UNORM)
 		return DXGI_FORMAT_R8G8B8A8_UNORM;
 
@@ -215,6 +218,9 @@ DXGI_FORMAT ConvertFormat(TextureFormatType format)
 
 TextureFormatType ConvertFormat(DXGI_FORMAT format)
 {
+	if (format == DXGI_FORMAT_B8G8R8A8_UNORM)
+		return TextureFormatType::B8G8R8A8_UNORM;
+
 	if (format == DXGI_FORMAT_R8G8B8A8_UNORM)
 		return TextureFormatType::R8G8B8A8_UNORM;
 

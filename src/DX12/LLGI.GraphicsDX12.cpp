@@ -295,6 +295,7 @@ std::vector<uint8_t> GraphicsDX12::CaptureRenderTarget(Texture* renderTarget)
 	}
 
 	if (renderTarget->GetFormat() != TextureFormatType::R8G8B8A8_UNORM &&
+		renderTarget->GetFormat() != TextureFormatType::B8G8R8A8_UNORM &&
 		renderTarget->GetFormat() != TextureFormatType::R8G8B8A8_UNORM_SRGB &&
 		renderTarget->GetFormat() != TextureFormatType::R32G32B32A32_FLOAT && renderTarget->GetFormat() != TextureFormatType::R8_UNORM)
 	{

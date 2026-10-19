@@ -38,6 +38,7 @@ public:
 	~GraphicsMetal() override;
 
 	bool Initialize(std::function<GraphicsView()> getGraphicsView);
+	bool Initialize(id<MTLDevice> device, id<MTLCommandQueue> queue);
 
 	bool Supports(GraphicsCapability capability) const override
 	{

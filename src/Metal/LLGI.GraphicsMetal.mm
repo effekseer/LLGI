@@ -42,17 +42,19 @@ bool GraphicsMetal::Initialize(std::function<GraphicsView()> getGraphicsView)
 {
 	getGraphicsView_ = getGraphicsView;
 
-	device_ = MTLCreateSystemDefaultDevice();
-	if (device_ == nil)
-	{
-		return false;
-	}
+	auto device = MTLCreateSystemDefaultDevice();
+	auto queue = [device newCommandQueue];
+	const bool result = Initialize(device, queue);
+	[queue release];
+	[device release];
+	return result;
+}
 
-	commandQueue_ = [device_ newCommandQueue];
-	if (commandQueue_ == nil)
-	{
-		return false;
-	}
+bool GraphicsMetal::Initialize(id<MTLDevice> device, id<MTLCommandQueue> queue)
+{
+	if (device == nil || queue == nil || queue.device != device || device_ != nil) return false;
+	device_ = [device retain];
+	commandQueue_ = [queue retain];
 
 	maxMultiSamplingCount_ = 0;
 	int testSampleCounts[] = {8, 4, 2, 1};
