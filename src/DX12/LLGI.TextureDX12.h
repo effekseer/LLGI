@@ -49,6 +49,8 @@ public:
 
 	//! init as external texture
 	bool Initialize(ID3D12Resource* textureResource);
+	// Import a host resource with an explicit typed view and tracked initial state.
+	bool Initialize(ID3D12Resource* textureResource, DXGI_FORMAT viewFormat, D3D12_RESOURCE_STATES initialState);
 
 	void* Lock() override;
 

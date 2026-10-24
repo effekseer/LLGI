@@ -185,15 +185,23 @@ bool TextureDX12::Initialize(const TextureParameter& parameter)
 
 bool TextureDX12::Initialize(ID3D12Resource* textureResource)
 {
+	return textureResource && Initialize(textureResource, textureResource->GetDesc().Format, D3D12_RESOURCE_STATE_COMMON);
+}
+
+bool TextureDX12::Initialize(ID3D12Resource* textureResource, DXGI_FORMAT viewFormat, D3D12_RESOURCE_STATES initialState)
+{
+	if (textureResource == nullptr || ConvertFormat(viewFormat) == TextureFormatType::Unknown)
+		return false;
 	type_ = TextureType::Color;
 	texture_ = textureResource;
 
 	SafeAddRef(texture_);
 
 	auto desc = texture_->GetDesc();
-	dxgiFormat_ = desc.Format;
+	dxgiFormat_ = viewFormat;
+	state_ = initialState;
 
-	format_ = ConvertFormat(desc.Format);
+	format_ = ConvertFormat(viewFormat);
 	texture_size_ = Vec3I(static_cast<int32_t>(desc.Width), static_cast<int32_t>(desc.Height), static_cast<int32_t>(desc.DepthOrArraySize));
 	cpu_memory_size_ = GetTextureMemorySize(format_, texture_size_);
 	mipmapCount_ = desc.MipLevels;
