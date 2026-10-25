@@ -70,7 +70,7 @@ const std::vector<vk::DescriptorSet>& DescriptorPoolVulkan::Get(PipelineStateVul
 	if (cache.size() > static_cast<size_t>(offset))
 	{
 		offset++;
-		return cache[offset - 1];
+		return cache[offset - 1].sets;
 	}
 
 	if (offset >= slotSizeMax_)
@@ -87,9 +87,9 @@ const std::vector<vk::DescriptorSet>& DescriptorPoolVulkan::Get(PipelineStateVul
 	allocateInfo.pSetLayouts = layout.data();
 
 	std::vector<vk::DescriptorSet> descriptorSets = graphics_->GetDevice().allocateDescriptorSets(allocateInfo);
-	cache.push_back(descriptorSets);
+	cache.push_back({CreateSharedPtr(pip, true), std::move(descriptorSets)});
 	offset++;
-	return cache[offset - 1];
+	return cache[offset - 1].sets;
 }
 
 const std::vector<vk::DescriptorSet>& DescriptorPoolVulkan::GetCompute(PipelineStateVulkan* pip)
@@ -97,7 +97,7 @@ const std::vector<vk::DescriptorSet>& DescriptorPoolVulkan::GetCompute(PipelineS
 	if (computeCache.size() > static_cast<size_t>(computeOffset))
 	{
 		computeOffset++;
-		return computeCache[computeOffset - 1];
+		return computeCache[computeOffset - 1].sets;
 	}
 
 	if (computeOffset >= slotSizeMax_)
@@ -114,9 +114,9 @@ const std::vector<vk::DescriptorSet>& DescriptorPoolVulkan::GetCompute(PipelineS
 	allocateInfo.pSetLayouts = layout.data();
 
 	std::vector<vk::DescriptorSet> descriptorSets = graphics_->GetDevice().allocateDescriptorSets(allocateInfo);
-	computeCache.push_back(descriptorSets);
+	computeCache.push_back({CreateSharedPtr(pip, true), std::move(descriptorSets)});
 	computeOffset++;
-	return computeCache[computeOffset - 1];
+	return computeCache[computeOffset - 1].sets;
 }
 
 void DescriptorPoolVulkan::Reset()

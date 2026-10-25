@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "../LLGI.CommandList.h"
 #include "LLGI.BaseVulkan.h"
@@ -9,16 +9,24 @@ namespace LLGI
 class DescriptorPoolVulkan
 {
 private:
+	struct DescriptorSets
+	{
+		// Keep the allocation layouts alive while cached sets are updated and reused.
+		// キャッシュしたSetを更新・再利用する間、確保元のLayoutを維持します。
+		std::shared_ptr<PipelineStateVulkan> pipeline;
+		std::vector<vk::DescriptorSet> sets;
+	};
+
 	std::shared_ptr<GraphicsVulkan> graphics_;
 	vk::DescriptorPool descriptorPool_ = nullptr;
 	int32_t offset = 0;
-	std::vector<std::vector<vk::DescriptorSet>> cache;
+	std::vector<DescriptorSets> cache;
 	int32_t slotSizeMax_;
 	std::vector<vk::DescriptorSet> dummySet_;
 
 	vk::DescriptorPool computeDescriptorPool_ = nullptr;
 	int32_t computeOffset = 0;
-	std::vector<std::vector<vk::DescriptorSet>> computeCache;
+	std::vector<DescriptorSets> computeCache;
 
 public:
 	DescriptorPoolVulkan(
