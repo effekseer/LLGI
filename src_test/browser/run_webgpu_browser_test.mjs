@@ -16,13 +16,18 @@ function optionValue(name) {
 }
 
 const filter = optionValue('--filter') || 'WebGPUBrowser.*';
+const testTimeoutMs = Number(optionValue('--timeout-ms') || 60000);
+if (!Number.isFinite(testTimeoutMs) || testTimeoutMs <= 0) {
+	console.error('--timeout-ms must be a positive number');
+	process.exit(2);
+}
 const captureDirValue = optionValue('--capture-dir') || optionValue('--screenshot-dir');
 const captureDir = captureDirValue ? path.resolve(captureDirValue) : null;
 const useCrossOriginIsolation =
 	args.includes('--cross-origin-isolated') || process.env.LLGI_WEBGPU_CROSS_ORIGIN_ISOLATED === '1';
 
 if (!htmlPath || args.includes('--help')) {
-	console.error('Usage: node run_webgpu_browser_test.mjs <LLGI_Test.html> [--filter=WebGPUBrowser.*] [--capture-dir=path|--screenshot-dir=path] [--cross-origin-isolated]');
+	console.error('Usage: node run_webgpu_browser_test.mjs <LLGI_Test.html> [--filter=WebGPUBrowser.*] [--capture-dir=path|--screenshot-dir=path] [--cross-origin-isolated] [--timeout-ms=60000]');
 	process.exit(2);
 }
 
@@ -613,7 +618,7 @@ try {
 		await processCanvasCaptureRequests(client, processedCaptureRequestIds);
 		await processDataCaptureRequests(client, processedDataCaptureRequestIds);
 	};
-	const value = await waitForTestResult(client, 60000, processCaptures);
+	const value = await waitForTestResult(client, testTimeoutMs, processCaptures);
 	await processCanvasCaptureRequests(client, processedCaptureRequestIds);
 	await processDataCaptureRequests(client, processedDataCaptureRequestIds);
 	if (!value || value.status !== 'passed') {
