@@ -29,13 +29,18 @@ Module.preRun.push(function() {
 			throw new Error('Failed to request a WebGPU adapter.');
 		}
 
-		var optionalFeatures = ['float32-filterable', 'texture-formats-tier2'];
+		var optionalFeatures = ['float32-filterable', 'texture-formats-tier2', 'timestamp-query'];
 		var requiredFeatures = optionalFeatures.filter(function(feature) {
 			return adapter.features && adapter.features.has(feature);
 		});
 
 		Module.preinitializedWebGPUDevice = await adapter.requestDevice({
-			requiredFeatures: requiredFeatures
+			requiredFeatures: requiredFeatures,
+			// Exercise particle storage with the adapter's available buffer limits.
+			requiredLimits: {
+				maxBufferSize: adapter.limits.maxBufferSize,
+				maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize
+			}
 		});
 		Module.preinitializedWebGPUDevice.addEventListener('uncapturederror', function(event) {
 			Module.llgiLastWebGPUError = event.error && event.error.message ? event.error.message : String(event.error);
