@@ -564,7 +564,7 @@ bool PipelineStateVulkan::CreateComputePipeline()
 		textureLayoutBindings[i].pImmutableSamplers = nullptr;
 	}
 
-	std::array<vk::DescriptorSetLayoutBinding, 8> computeLayoutBindings;
+	std::array<vk::DescriptorSetLayoutBinding, NumStorageBuffer> computeLayoutBindings;
 
 	for (size_t i = 0; i < computeLayoutBindings.size(); i++)
 	{
@@ -575,7 +575,7 @@ bool PipelineStateVulkan::CreateComputePipeline()
 		computeLayoutBindings[i].pImmutableSamplers = nullptr;
 	}
 
-	std::array<vk::DescriptorSetLayoutBinding, TextureSlotMax> storageImageLayoutBindings;
+	std::array<vk::DescriptorSetLayoutBinding, StorageTextureSlotMax> storageImageLayoutBindings;
 
 	for (size_t i = 0; i < storageImageLayoutBindings.size(); i++)
 	{

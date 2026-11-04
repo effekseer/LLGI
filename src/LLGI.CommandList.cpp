@@ -367,11 +367,14 @@ void CommandList::SetStorageBuffer(Buffer* storageBuffer, const ShaderResourceBi
 
 void CommandList::SetTexture(Texture* texture, TextureWrapMode wrapMode, TextureMinMagFilter minmagFilter, int32_t unit)
 {
-	if (unit < 0 || unit >= NumTexture)
+	const int slotMax = texture != nullptr && BitwiseContains(texture->GetUsage(), TextureUsageType::Storage)
+							? StorageTextureSlotMax
+							: NumTexture;
+	if (unit < 0 || unit >= slotMax)
 	{
 		Log(LogType::Error,
 			std::string("Texture slot is out of range. slot=") + std::to_string(unit) +
-				", max=" + std::to_string(NumTexture - 1));
+				", max=" + std::to_string(slotMax - 1));
 		return;
 	}
 
