@@ -9,31 +9,25 @@ namespace LLGI
 class DescriptorPoolVulkan
 {
 private:
-	struct DescriptorSets
-	{
-		// Keep the allocation layouts alive while cached sets are updated and reused.
-		// キャッシュしたSetを更新・再利用する間、確保元のLayoutを維持します。
-		std::shared_ptr<PipelineStateVulkan> pipeline;
-		std::vector<vk::DescriptorSet> sets;
-	};
-
 	std::shared_ptr<GraphicsVulkan> graphics_;
 	vk::DescriptorPool descriptorPool_ = nullptr;
-	int32_t offset = 0;
-	std::vector<DescriptorSets> cache;
+	struct Slots
+	{
+		std::shared_ptr<PipelineStateVulkan> layoutOwner;
+		std::vector<vk::DescriptorSet> sets;
+		uint32_t used = 0;
+	};
+	Slots drawSlots_;
 	int32_t slotSizeMax_;
-	std::vector<vk::DescriptorSet> dummySet_;
 
 	vk::DescriptorPool computeDescriptorPool_ = nullptr;
-	int32_t computeOffset = 0;
-	std::vector<DescriptorSets> computeCache;
+	Slots computeSlots_;
 
 public:
 	DescriptorPoolVulkan(
-		std::shared_ptr<GraphicsVulkan> graphics, int32_t slot_size_max, int32_t constant_size, int32_t texture_size, int32_t storage_size);
+		std::shared_ptr<GraphicsVulkan> graphics, int32_t slot_size_max);
 	virtual ~DescriptorPoolVulkan();
-	const std::vector<vk::DescriptorSet>& Get(PipelineStateVulkan* pip);
-	const std::vector<vk::DescriptorSet>& GetCompute(PipelineStateVulkan* pip);
+	const vk::DescriptorSet* Get(PipelineStateVulkan* pipeline, bool compute);
 	void Reset();
 };
 
@@ -55,6 +49,8 @@ private:
 	std::vector<vk::Fence> fences_;
 	vk::Sampler samplers_[3][2];
 	TextureVulkan* fallbackSampledTexture_ = nullptr;
+	TextureVulkan* fallbackStorageTexture_ = nullptr;
+	BufferVulkan* fallbackBuffer_ = nullptr;
 
 	RenderPassVulkan* renderPass_ = nullptr;
 	bool isInValidRenderPass_ = false;

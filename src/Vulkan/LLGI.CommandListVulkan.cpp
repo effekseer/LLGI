@@ -10,17 +10,17 @@ namespace LLGI
 {
 
 DescriptorPoolVulkan::DescriptorPoolVulkan(
-	std::shared_ptr<GraphicsVulkan> graphics, int32_t slot_size_max, int32_t constant_size, int32_t texture_size, int32_t storage_size)
+	std::shared_ptr<GraphicsVulkan> graphics, int32_t slot_size_max)
 	: graphics_(graphics), slotSizeMax_(slot_size_max)
 {
 	{
 		std::array<vk::DescriptorPoolSize, 3> poolSizes;
 		poolSizes[0].type = vk::DescriptorType::eUniformBufferDynamic;
-		poolSizes[0].descriptorCount = slotSizeMax_ * constant_size;
+		poolSizes[0].descriptorCount = slotSizeMax_ * NumConstantBuffer;
 		poolSizes[1].type = vk::DescriptorType::eCombinedImageSampler;
-		poolSizes[1].descriptorCount = slotSizeMax_ * texture_size;
+		poolSizes[1].descriptorCount = slotSizeMax_ * NumTexture;
 		poolSizes[2].type = vk::DescriptorType::eStorageBufferDynamic;
-		poolSizes[2].descriptorCount = slotSizeMax_ * storage_size;
+		poolSizes[2].descriptorCount = slotSizeMax_ * NumStorageBuffer;
 
 		vk::DescriptorPoolCreateInfo poolInfo;
 		poolInfo.poolSizeCount = 3;
@@ -33,13 +33,13 @@ DescriptorPoolVulkan::DescriptorPoolVulkan(
 	{
 		std::array<vk::DescriptorPoolSize, 4> poolSizes;
 		poolSizes[0].type = vk::DescriptorType::eUniformBufferDynamic;
-		poolSizes[0].descriptorCount = slotSizeMax_ * constant_size;
+		poolSizes[0].descriptorCount = slotSizeMax_ * NumConstantBuffer;
 		poolSizes[1].type = vk::DescriptorType::eCombinedImageSampler;
-		poolSizes[1].descriptorCount = slotSizeMax_ * texture_size;
+		poolSizes[1].descriptorCount = slotSizeMax_ * NumTexture;
 		poolSizes[2].type = vk::DescriptorType::eStorageBufferDynamic;
-		poolSizes[2].descriptorCount = slotSizeMax_ * storage_size;
+		poolSizes[2].descriptorCount = slotSizeMax_ * NumStorageBuffer;
 		poolSizes[3].type = vk::DescriptorType::eStorageImage;
-		poolSizes[3].descriptorCount = slotSizeMax_ * texture_size;
+		poolSizes[3].descriptorCount = slotSizeMax_ * StorageTextureSlotMax;
 
 		vk::DescriptorPoolCreateInfo poolInfo;
 		poolInfo.poolSizeCount = 4;
@@ -65,64 +65,56 @@ DescriptorPoolVulkan ::~DescriptorPoolVulkan()
 	}
 }
 
-const std::vector<vk::DescriptorSet>& DescriptorPoolVulkan::Get(PipelineStateVulkan* pip)
+const vk::DescriptorSet* DescriptorPoolVulkan::Get(PipelineStateVulkan* pipeline, bool compute)
 {
-	if (cache.size() > static_cast<size_t>(offset))
-	{
-		offset++;
-		return cache[offset - 1].sets;
-	}
-
-	if (offset >= slotSizeMax_)
+	auto& slots = compute ? computeSlots_ : drawSlots_;
+	if (slots.used >= static_cast<uint32_t>(slotSizeMax_))
 	{
 		Log(LogType::Warning, "Lack of allocated memory.");
-		return dummySet_;
+		return nullptr;
 	}
 
-	// TODO : improve it
-	auto& layout = pip->GetDescriptorSetLayout();
-	vk::DescriptorSetAllocateInfo allocateInfo;
-	allocateInfo.descriptorPool = descriptorPool_;
-	allocateInfo.descriptorSetCount = static_cast<int>(layout.size());
-	allocateInfo.pSetLayouts = layout.data();
-
-	std::vector<vk::DescriptorSet> descriptorSets = graphics_->GetDevice().allocateDescriptorSets(allocateInfo);
-	cache.push_back({CreateSharedPtr(pip, true), std::move(descriptorSets)});
-	offset++;
-	return cache[offset - 1].sets;
-}
-
-const std::vector<vk::DescriptorSet>& DescriptorPoolVulkan::GetCompute(PipelineStateVulkan* pip)
-{
-	if (computeCache.size() > static_cast<size_t>(computeOffset))
+	// Layout definitions are fixed for each bind point. Retain the layouts used to allocate the sets.
+	if (!slots.layoutOwner)
 	{
-		computeOffset++;
-		return computeCache[computeOffset - 1].sets;
+		slots.layoutOwner = CreateSharedPtr(pipeline, true);
 	}
-
-	if (computeOffset >= slotSizeMax_)
+	using Layouts = vk::ArrayProxy<const vk::DescriptorSetLayout>;
+	const auto layouts = compute ? Layouts(slots.layoutOwner->GetComputeDescriptorSetLayout()) : Layouts(slots.layoutOwner->GetDescriptorSetLayout());
+	const auto stride = layouts.size();
+	const auto offset = slots.used * stride;
+	if (offset >= slots.sets.size())
 	{
-		Log(LogType::Warning, "Lack of allocated memory.");
-		return dummySet_;
+		constexpr uint32_t BatchSize = 16;
+		const auto groups = std::min(BatchSize, static_cast<uint32_t>(slotSizeMax_) - slots.used);
+		std::array<vk::DescriptorSetLayout, BatchSize * 4> batchLayouts;
+		for (uint32_t i = 0; i < groups; ++i)
+		{
+			std::copy_n(layouts.data(), stride, batchLayouts.data() + i * stride);
+		}
+
+		vk::DescriptorSetAllocateInfo info;
+		info.descriptorPool = compute ? computeDescriptorPool_ : descriptorPool_;
+		info.descriptorSetCount = groups * stride;
+		info.pSetLayouts = batchLayouts.data();
+		const auto previous = slots.sets.size();
+		slots.sets.resize(previous + info.descriptorSetCount);
+		if (graphics_->GetDevice().allocateDescriptorSets(&info, slots.sets.data() + previous) != vk::Result::eSuccess)
+		{
+			slots.sets.resize(previous);
+			Log(LogType::Error, "Failed to allocate descriptor sets.");
+			return nullptr;
+		}
 	}
 
-	// TODO : improve it
-	auto& layout = pip->GetComputeDescriptorSetLayout();
-	vk::DescriptorSetAllocateInfo allocateInfo;
-	allocateInfo.descriptorPool = computeDescriptorPool_;
-	allocateInfo.descriptorSetCount = static_cast<int>(layout.size());
-	allocateInfo.pSetLayouts = layout.data();
-
-	std::vector<vk::DescriptorSet> descriptorSets = graphics_->GetDevice().allocateDescriptorSets(allocateInfo);
-	computeCache.push_back({CreateSharedPtr(pip, true), std::move(descriptorSets)});
-	computeOffset++;
-	return computeCache[computeOffset - 1].sets;
+	++slots.used;
+	return slots.sets.data() + offset;
 }
 
 void DescriptorPoolVulkan::Reset()
 {
-	offset = 0;
-	computeOffset = 0;
+	drawSlots_.used = 0;
+	computeSlots_.used = 0;
 }
 
 void CommandListVulkan::AssignConstantBuffersToCommandList(const vk::DescriptorSet& descriptorSet,
@@ -133,11 +125,7 @@ void CommandListVulkan::AssignConstantBuffersToCommandList(const vk::DescriptorS
 {
 	for (size_t unit_ind = 0; unit_ind < constantBuffers_.size(); unit_ind++)
 	{
-		auto cb = static_cast<BufferVulkan*>(constantBuffers_[unit_ind]);
-		if (cb == nullptr)
-		{
-			continue;
-		}
+		auto cb = constantBuffers_[unit_ind] ? static_cast<BufferVulkan*>(constantBuffers_[unit_ind]) : fallbackBuffer_;
 
 		descBuffers[descBufferOffset].buffer = cb->GetBuffer();
 		descBuffers[descBufferOffset].offset = cb->GetOffset();
@@ -169,10 +157,7 @@ void CommandListVulkan::AssignStorageBuffersToCommandList(const vk::DescriptorSe
 		BindingStorageBuffer cb_;
 		GetCurrentStorageBuffer(unit_ind, cb_);
 
-		if (cb_.storageBuffer == nullptr)
-			continue;
-
-		auto cb = static_cast<BufferVulkan*>(cb_.storageBuffer);
+		auto cb = cb_.storageBuffer ? static_cast<BufferVulkan*>(cb_.storageBuffer) : fallbackBuffer_;
 
 		descBuffers[descBufferOffset].buffer = cb->GetBuffer();
 		descBuffers[descBufferOffset].offset = cb->GetOffset();
@@ -204,19 +189,9 @@ void CommandListVulkan::AssignTexturesToCommandList(const vk::DescriptorSet& des
 	{
 		auto texture = static_cast<TextureVulkan*>(currentTextures_[unit_ind].texture);
 		const auto usage = texture != nullptr ? texture->GetUsage() : TextureUsageType::NoneFlag;
-		if (!filter(usage))
-		{
-			continue;
-		}
-
-		if (texture == nullptr)
+		if (texture == nullptr || !filter(usage))
 		{
 			texture = fallbackSampledTexture_;
-		}
-
-		if (texture == nullptr)
-		{
-			continue;
 		}
 
 		auto wm = (int32_t)currentTextures_[unit_ind].wrapMode;
@@ -299,6 +274,8 @@ CommandListVulkan::~CommandListVulkan()
 	}
 
 	SafeRelease(fallbackSampledTexture_);
+	SafeRelease(fallbackStorageTexture_);
+	SafeRelease(fallbackBuffer_);
 }
 
 bool CommandListVulkan::CreateFallbackSampledTexture()
@@ -340,7 +317,7 @@ bool CommandListVulkan::Initialize(GraphicsVulkan* graphics, int32_t drawingCoun
 
 	for (size_t i = 0; i < static_cast<size_t>(graphics_->GetSwapBufferCount()); i++)
 	{
-		auto dp = std::make_shared<DescriptorPoolVulkan>(graphics_, drawingCount, 4, 8, 8);
+		auto dp = std::make_shared<DescriptorPoolVulkan>(graphics_, drawingCount);
 		descriptorPools.push_back(dp);
 
 		fences_.emplace_back(vk::Fence{});
@@ -381,7 +358,12 @@ bool CommandListVulkan::Initialize(GraphicsVulkan* graphics, int32_t drawingCoun
 		}
 	}
 
-	if (!CreateFallbackSampledTexture())
+	// Overwrite every binding when recycling a set, including slots that the new draw leaves unbound.
+	fallbackBuffer_ = static_cast<BufferVulkan*>(graphics_->CreateBuffer(BufferUsageType::Constant | BufferUsageType::StorageRead, 16));
+	TextureParameter storageTexture;
+	storageTexture.Usage = TextureUsageType::Storage;
+	fallbackStorageTexture_ = static_cast<TextureVulkan*>(graphics_->CreateTexture(storageTexture));
+	if (!fallbackBuffer_ || !fallbackStorageTexture_ || !CreateFallbackSampledTexture())
 	{
 		return false;
 	}
@@ -533,8 +515,8 @@ void CommandListVulkan::Draw(int32_t primitiveCount, int32_t instanceCount)
 
 	auto& dp = descriptorPools[currentSwapBufferIndex_];
 
-	const auto& descriptorSets = dp->Get(pip);
-	if (descriptorSets.size() == 0)
+	const auto descriptorSets = dp->Get(pip, false);
+	if (descriptorSets == nullptr)
 	{
 		return;
 	}
@@ -570,7 +552,7 @@ void CommandListVulkan::Draw(int32_t primitiveCount, int32_t instanceCount)
 	offsets.fill(0);
 
 	currentCommandBuffer_.bindDescriptorSets(
-		vk::PipelineBindPoint::eGraphics, pip->GetPipelineLayout(), 0, 3, descriptorSets.data(), 12, offsets.data());
+		vk::PipelineBindPoint::eGraphics, pip->GetPipelineLayout(), 0, 3, descriptorSets, 12, offsets.data());
 
 	// assign a pipeline
 	if (isPipDirtied)
@@ -878,8 +860,8 @@ void CommandListVulkan::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ,
 
 	auto& dp = descriptorPools[currentSwapBufferIndex_];
 
-	const auto& descriptorSets = dp->GetCompute(pip);
-	if (descriptorSets.size() == 0)
+	const auto descriptorSets = dp->Get(pip, true);
+	if (descriptorSets == nullptr)
 	{
 		return;
 	}
@@ -906,17 +888,16 @@ void CommandListVulkan::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ,
 								descriptorImageIndex,
 								[](TextureUsageType t) -> bool { return !BitwiseContains(t, TextureUsageType::Storage); });
 
-	// Assign textures
-	for (int unit_ind = 0; unit_ind < static_cast<int32_t>(currentTextures_.size()); unit_ind++)
+	// Assign storage images, including the unused bindings of a recycled set.
+	for (int unit_ind = 0; unit_ind < StorageTextureSlotMax; unit_ind++)
 	{
-		if (currentTextures_[unit_ind].texture == nullptr ||
-			!BitwiseContains(currentTextures_[unit_ind].texture->GetUsage(), TextureUsageType::Storage))
+		auto texture = static_cast<TextureVulkan*>(currentTextures_[unit_ind].texture);
+		if (texture == nullptr || !BitwiseContains(texture->GetUsage(), TextureUsageType::Storage))
 		{
-			continue;
+			texture = fallbackStorageTexture_;
 		}
 
 		const auto targetImageLayout = vk::ImageLayout::eGeneral;
-		auto texture = (TextureVulkan*)currentTextures_[unit_ind].texture;
 		texture->ResourceBarrier(currentCommandBuffer_, targetImageLayout);
 
 		vk::DescriptorImageInfo imageInfo;
@@ -964,7 +945,7 @@ void CommandListVulkan::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ,
 	offsets.fill(0);
 
 	currentCommandBuffer_.bindDescriptorSets(
-		vk::PipelineBindPoint::eCompute, pip->GetComputePipelineLayout(), 0, 4, descriptorSets.data(), 12, offsets.data());
+		vk::PipelineBindPoint::eCompute, pip->GetComputePipelineLayout(), 0, 4, descriptorSets, 12, offsets.data());
 
 	// assign a pipeline
 	if (isPipDirtied)
