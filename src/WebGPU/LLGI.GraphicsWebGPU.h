@@ -6,6 +6,10 @@
 
 namespace LLGI
 {
+namespace WebGPU
+{
+class MipmapGenerator;
+}
 class RenderPassPipelineStateWebGPU;
 
 class GraphicsWebGPU : public Graphics
@@ -18,6 +22,7 @@ private:
 	wgpu::Device device_;
 	wgpu::Instance instance_;
 	wgpu::Queue queue_;
+	std::shared_ptr<WebGPU::MipmapGenerator> mipmaps_;
 
 public:
 

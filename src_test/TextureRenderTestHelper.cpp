@@ -69,13 +69,7 @@ bool IsTextureFormatRenderTestSupported(LLGI::DeviceType deviceType, LLGI::Textu
 
 	if (deviceType == LLGI::DeviceType::WebGPU)
 	{
-		if (LLGI::IsBlockCompressedFormat(format))
-		{
-			return false;
-		}
-
-		return format != LLGI::TextureFormatType::R16_FLOAT && format != LLGI::TextureFormatType::R32_FLOAT &&
-			   format != LLGI::TextureFormatType::R32G32_FLOAT;
+		return !LLGI::IsBlockCompressedFormat(format);
 	}
 
 	return true;

@@ -1,26 +1,67 @@
 #include "LLGI.BufferWebGPU.h"
 
-#include <atomic>
-#include <chrono>
-#include <memory>
-#include <thread>
+#include "LLGI.CompletionWebGPU.h"
 
-#if defined(__EMSCRIPTEN__)
-#include <emscripten.h>
-#endif
+#include <algorithm>
+#include <cstring>
 
 namespace LLGI
 {
 
 namespace
 {
-struct AsyncWaitState
-{
-	std::atomic<bool> Completed{false};
-	std::atomic<bool> Succeeded{false};
-};
+uint64_t AlignTo(uint64_t value, uint64_t alignment) { return (value + alignment - 1) / alignment * alignment; }
 
-int32_t AlignTo(int32_t value, int32_t alignment) { return (value + alignment - 1) / alignment * alignment; }
+// Buffer-to-buffer transfers operate on words. A single row of R8 texels can
+// transfer the remaining bytes without overwriting a neighbouring byte.
+void CopyBufferBytes(wgpu::Device& device,
+					 wgpu::CommandEncoder& encoder,
+					 const wgpu::Buffer& src,
+					 uint64_t srcOffset,
+					 const wgpu::Buffer& dst,
+					 uint64_t dstOffset,
+					 uint64_t size)
+{
+	// Callers place source and destination at the same offset within a word.
+	assert(srcOffset % 4 == dstOffset % 4);
+	wgpu::TexelCopyTextureInfo scratch{};
+	auto copyEdge = [&](uint64_t bytes)
+	{
+		if (!scratch.texture)
+		{
+			wgpu::TextureDescriptor desc{};
+			desc.size = {3, 1, 1};
+			desc.format = wgpu::TextureFormat::R8Uint;
+			desc.usage = wgpu::TextureUsage::CopyDst | wgpu::TextureUsage::CopySrc;
+			scratch.texture = device.CreateTexture(&desc);
+		}
+		wgpu::TexelCopyBufferInfo from{}, to{};
+		from.buffer = src;
+		from.layout.offset = srcOffset;
+		to.buffer = dst;
+		to.layout.offset = dstOffset;
+		wgpu::Extent3D extent{static_cast<uint32_t>(bytes), 1, 1};
+		encoder.CopyBufferToTexture(&from, &scratch, &extent);
+		encoder.CopyTextureToBuffer(&scratch, &to, &extent);
+		srcOffset += bytes;
+		dstOffset += bytes;
+		size -= bytes;
+	};
+
+	if (dstOffset % 4 != 0)
+		copyEdge(std::min(size, 4 - dstOffset % 4));
+
+	const auto words = size - size % 4;
+	if (words != 0)
+	{
+		encoder.CopyBufferToBuffer(src, srcOffset, dst, dstOffset, words);
+		srcOffset += words;
+		dstOffset += words;
+		size -= words;
+	}
+	if (size != 0)
+		copyEdge(size);
+}
 } // namespace
 
 bool BufferWebGPU::Initialize(wgpu::Device& device, const BufferUsageType usage, const int32_t size, wgpu::Instance instance)
@@ -34,7 +75,7 @@ bool BufferWebGPU::Initialize(wgpu::Device& device, const BufferUsageType usage,
 	instance_ = instance;
 
 	wgpu::BufferDescriptor desc{};
-	allocatedSize_ = BitwiseContains(usage, BufferUsageType::Constant) ? AlignTo(size, 16) : size;
+	allocatedSize_ = AlignTo(size, BitwiseContains(usage, BufferUsageType::Constant) ? 16 : 4);
 	desc.size = allocatedSize_;
 	if (BitwiseContains(usage, BufferUsageType::MapRead))
 	{
@@ -76,62 +117,22 @@ void* BufferWebGPU::Lock() { return Lock(0, GetSize()); }
 
 void* BufferWebGPU::Lock(int32_t offset, int32_t size)
 {
+	if (offset < 0 || size <= 0 || offset > size_ - size)
+		return nullptr;
 	lockedOffset_ = offset;
-	lockedSize_ = size;
 
 	if (BitwiseContains(usage_, BufferUsageType::MapRead))
 	{
-		auto state = std::make_shared<AsyncWaitState>();
-		auto future = buffer_.MapAsync(wgpu::MapMode::Read,
-									   offset,
-									   size,
-#if defined(__EMSCRIPTEN__)
-									   wgpu::CallbackMode::AllowSpontaneous,
-#else
-									   instance_ != nullptr ? wgpu::CallbackMode::WaitAnyOnly : wgpu::CallbackMode::AllowProcessEvents,
-#endif
-									   [state](wgpu::MapAsyncStatus status, wgpu::StringView)
-									   {
-										   state->Succeeded.store(status == wgpu::MapAsyncStatus::Success, std::memory_order_relaxed);
-										   state->Completed.store(true, std::memory_order_release);
-									   });
-
-		if (instance_ != nullptr)
-		{
-			instance_.WaitAny(future, 5ULL * 1000ULL * 1000ULL * 1000ULL);
-		}
-		else
-		{
-#if defined(__EMSCRIPTEN__)
-			const double waitStart = emscripten_get_now();
-			while (!state->Completed.load(std::memory_order_acquire))
-			{
-				emscripten_sleep(1);
-				if (emscripten_get_now() - waitStart > 5000.0)
-				{
-					break;
-				}
-			}
-#else
-			const auto waitStart = std::chrono::steady_clock::now();
-			while (!state->Completed.load(std::memory_order_acquire))
-			{
-				device_.Tick();
-				if (std::chrono::steady_clock::now() - waitStart > std::chrono::seconds(5))
-				{
-					break;
-				}
-				std::this_thread::sleep_for(std::chrono::milliseconds(1));
-			}
-#endif
-		}
-
-		return state->Completed.load(std::memory_order_acquire) && state->Succeeded.load(std::memory_order_relaxed)
-				   ? const_cast<void*>(buffer_.GetConstMappedRange(offset, size))
-				   : nullptr;
+		const uint64_t mapOffset = offset - offset % 8;
+		const auto mapSize = AlignTo(static_cast<uint64_t>(offset) + size, 4) - mapOffset;
+		if (!WebGPU::MapReadAndWait(device_, instance_, buffer_, mapOffset, mapSize))
+			return nullptr;
+		auto* mapped = static_cast<const uint8_t*>(buffer_.GetConstMappedRange(mapOffset, mapSize));
+		return mapped ? const_cast<uint8_t*>(mapped + (offset - mapOffset)) : nullptr;
 	}
 
-	lockedBuffer_.resize(size);
+	// Padding after the logical end is ours to write. Bytes inside the logical range belong to the caller.
+	lockedBuffer_.resize(offset + size == size_ && offset % 4 == 0 ? AlignTo(size, 4) : size);
 	return lockedBuffer_.data();
 }
 
@@ -146,10 +147,36 @@ void BufferWebGPU::Unlock()
 		return;
 	}
 
-	device_.GetQueue().WriteBuffer(buffer_, lockedOffset_, lockedBuffer_.data(), lockedSize_);
+	if (lockedOffset_ % 4 == 0 && lockedBuffer_.size() % 4 == 0)
+	{
+		device_.GetQueue().WriteBuffer(buffer_, lockedOffset_, lockedBuffer_.data(), lockedBuffer_.size());
+	}
+	else
+	{
+		const uint32_t prefix = lockedOffset_ % 4;
+		wgpu::BufferDescriptor desc{};
+		desc.size = AlignTo(static_cast<uint64_t>(prefix) + lockedBuffer_.size(), 4);
+		desc.usage = wgpu::BufferUsage::CopySrc;
+		desc.mappedAtCreation = true;
+		auto upload = device_.CreateBuffer(&desc);
+		std::memcpy(static_cast<uint8_t*>(upload.GetMappedRange()) + prefix, lockedBuffer_.data(), lockedBuffer_.size());
+		upload.Unmap();
+
+		auto encoder = device_.CreateCommandEncoder();
+		CopyBufferBytes(device_, encoder, upload, prefix, buffer_, lockedOffset_, lockedBuffer_.size());
+		auto commands = encoder.Finish();
+		device_.GetQueue().Submit(1, &commands);
+	}
 	lockedBuffer_.clear();
 	lockedOffset_ = 0;
-	lockedSize_ = 0;
+}
+
+void BufferWebGPU::CopyTo(wgpu::CommandEncoder& encoder, BufferWebGPU& destination)
+{
+	const auto size = std::min(size_, destination.size_);
+	// The final word can include padding only when the copy reaches the end of the destination.
+	const uint64_t bytes = size == destination.size_ ? AlignTo(size, 4) : size;
+	CopyBufferBytes(device_, encoder, buffer_, 0, destination.buffer_, 0, bytes);
 }
 
 int32_t BufferWebGPU::GetSize() { return size_; }

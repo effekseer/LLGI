@@ -56,6 +56,8 @@ protected:
 	};
 
 private:
+	void BeginRecording(bool withPlatform);
+
 	struct SwapObject
 	{
 		std::vector<ReferenceObject*> referencedObjects;
@@ -91,6 +93,7 @@ protected:
 	void GetCurrentPipelineState(PipelineState*& pipelineState, bool& isDirtied);
 	void GetCurrentStorageBuffer(int32_t unit, BindingStorageBuffer& buffer);
 	void RegisterReferencedObject(ReferenceObject* referencedObject);
+	void SetTextureBinding(Texture* texture, TextureWrapMode wrapMode, TextureMinMagFilter filter, int32_t unit, int32_t slotMax);
 	bool ValidateDrawState(const char* backendName,
 						   int32_t primitiveCount,
 						   int32_t instanceCount,
@@ -207,7 +210,7 @@ public:
 	virtual bool RecordTimestamp(Query* query, uint32_t queryIndex) { return false; }
 
 	virtual void ResetStorageBuffers();
-	virtual void BeginComputePass() {}
+	virtual void BeginComputePass() { isPipelineDirtied = true; }
 	virtual void EndComputePass() {}
 	virtual bool BeginComputePassWithPlatformPtr(void* platformPtr) { return false; }
 	virtual bool EndComputePassWithPlatformPtr() { return false; }

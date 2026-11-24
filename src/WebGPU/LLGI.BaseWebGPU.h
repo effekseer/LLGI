@@ -28,6 +28,8 @@ wgpu::TextureFormat ConvertFormat(TextureFormatType format);
 
 TextureFormatType ConvertFormat(wgpu::TextureFormat format);
 
+wgpu::Extent3D GetTextureCopyExtent(TextureFormatType format, Vec3I size);
+
 int32_t GetSize(VertexLayoutFormat format);
 
-} // namespace std
+} // namespace LLGI

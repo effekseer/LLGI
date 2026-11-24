@@ -29,7 +29,7 @@ Module.preRun.push(function() {
 			throw new Error('Failed to request a WebGPU adapter.');
 		}
 
-		var optionalFeatures = ['float32-filterable', 'texture-formats-tier2', 'timestamp-query'];
+		var optionalFeatures = ['float32-filterable', 'texture-formats-tier2', 'texture-compression-bc', 'timestamp-query'];
 		var requiredFeatures = optionalFeatures.filter(function(feature) {
 			return adapter.features && adapter.features.has(feature);
 		});

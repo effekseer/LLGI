@@ -10,7 +10,8 @@
 std::vector<uint8_t> ReadTextureUploadPlaneWebGPU(
 	LLGI::Graphics* graphics, LLGI::Texture* texture, int32_t mip, int32_t layer, const LLGI::Vec2I& size)
 {
-	const uint32_t rowPitch = (static_cast<uint32_t>(size.X) * 4 + 255) / 256 * 256;
+	const auto rowBytes = static_cast<uint32_t>(LLGI::GetTextureRowPitch(texture->GetFormat(), {size.X, size.Y, 1}));
+	const uint32_t rowPitch = (rowBytes + 255) / 256 * 256;
 	auto readback = LLGI::CreateSharedPtr(graphics->CreateBuffer(LLGI::BufferUsageType::CopyDst | LLGI::BufferUsageType::MapRead,
 															 rowPitch * size.Y));
 	VERIFY(readback != nullptr);
@@ -35,7 +36,6 @@ std::vector<uint8_t> ReadTextureUploadPlaneWebGPU(
 	// Mapping waits for this buffer's copy, including in the browser build.
 	const auto mapped = static_cast<const uint8_t*>(readback->Lock());
 	VERIFY(mapped != nullptr);
-	const size_t rowBytes = static_cast<size_t>(size.X) * 4;
 	std::vector<uint8_t> data(rowBytes * size.Y);
 	for (int32_t y = 0; y < size.Y; y++)
 	{

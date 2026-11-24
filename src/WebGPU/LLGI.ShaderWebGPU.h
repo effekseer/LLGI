@@ -9,13 +9,13 @@ namespace LLGI
 
 struct ShaderBindingWebGPU
 {
+	bool operator==(const ShaderBindingWebGPU& rhs) const;
+
 	uint32_t Group = 0;
 	uint32_t Binding = 0;
 	ShaderResourceBinding Resource;
-	wgpu::TextureViewDimension TextureViewDimension = wgpu::TextureViewDimension::e2D;
-	wgpu::TextureSampleType TextureSampleType = wgpu::TextureSampleType::Float;
-	wgpu::TextureFormat StorageTextureFormat = wgpu::TextureFormat::Undefined;
-	wgpu::StorageTextureAccess StorageTextureAccess = wgpu::StorageTextureAccess::Undefined;
+	bool ComparisonSampler = false;
+	bool SupportsWhiteFallback = false;
 };
 
 class ShaderWebGPU : public Shader

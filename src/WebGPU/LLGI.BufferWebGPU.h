@@ -5,9 +5,6 @@
 
 namespace LLGI
 {
-/**
- * TODO : Implement short time buffer
-*/
 class BufferWebGPU : public Buffer
 {
 	wgpu::Buffer buffer_ = nullptr;
@@ -15,10 +12,8 @@ class BufferWebGPU : public Buffer
 	wgpu::Instance instance_ = nullptr;
 	std::vector<uint8_t> lockedBuffer_;
 	int32_t lockedOffset_ = 0;
-	int32_t lockedSize_ = 0;
 	int32_t size_ = 0;
-	int32_t allocatedSize_ = 0;
-	int32_t offset_ = 0;
+	uint64_t allocatedSize_ = 0;
 
 public:
 	bool Initialize(wgpu::Device& device, const BufferUsageType usage, const int32_t size, wgpu::Instance instance = nullptr);
@@ -28,10 +23,11 @@ public:
 
 	int32_t GetSize() override;
 
-	int32_t GetOffset() const { return offset_; }
-	int32_t GetAllocatedSize() const { return allocatedSize_; }
+	int32_t GetOffset() const { return 0; }
+	uint64_t GetAllocatedSize() const { return allocatedSize_; }
 
 	wgpu::Buffer& GetBuffer();
+	void CopyTo(wgpu::CommandEncoder& encoder, BufferWebGPU& destination);
 };
 
 } // namespace LLGI

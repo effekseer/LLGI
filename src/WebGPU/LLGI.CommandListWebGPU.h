@@ -2,8 +2,8 @@
 
 #include "../LLGI.CommandList.h"
 #include "LLGI.BaseWebGPU.h"
+#include "LLGI.CompletionWebGPU.h"
 #include <array>
-#include <atomic>
 #include <vector>
 
 namespace LLGI
@@ -28,22 +28,14 @@ class CommandListWebGPU : public CommandList
 		size_t next = 0;
 	};
 
-	enum class SubmissionStatus
-	{
-		Pending,
-		Completed,
-		Failed
-	};
-	using Completion = std::shared_ptr<std::atomic<SubmissionStatus>>;
-	Completion completion_;
-	Completion ObserveQueueCompletion() const;
+	WebGPU::Completion completion_;
 	wgpu::Device device_;
 	wgpu::CommandBuffer commandBuffer_;
-	wgpu::CommandEncoder commandEncorder_;
-	wgpu::RenderPassEncoder renderPassEncorder_;
-	wgpu::ComputePassEncoder computePassEncorder_;
+	wgpu::CommandEncoder commandEncoder_;
+	wgpu::RenderPassEncoder renderPassEncoder_;
+	wgpu::ComputePassEncoder computePassEncoder_;
 	wgpu::Sampler samplers_[3][2];
-	wgpu::Texture fallbackTexture_;
+	wgpu::Sampler comparisonSamplers_[3][2];
 	wgpu::TextureView fallbackTextureView_;
 	std::array<BindGroupBucket, 128> bindGroupBuckets_;
 	static constexpr uint32_t RetainedRecordings = 3;
@@ -61,9 +53,10 @@ class CommandListWebGPU : public CommandList
 		Render,
 		Compute
 	};
-	void BindResources(PipelineStateWebGPU& pipeline, PassType pass);
+	bool BindResources(PipelineStateWebGPU& pipeline, PassType pass);
 	void ClearBindGroupEntries();
 	void FinishRecording();
+	const wgpu::Sampler& GetSampler(size_t wrap, size_t filter, bool comparison);
 	wgpu::BindGroup GetBindGroup(const wgpu::BindGroupDescriptor& desc);
 	bool PrepareStandaloneCommand(const char* commandName);
 
@@ -95,6 +88,11 @@ public:
 	void EndComputePass() override;
 
 	void Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ, int32_t threadX, int32_t threadY, int32_t threadZ) override;
+
+	void SetTexture(Texture* texture, TextureWrapMode wrapMode, TextureMinMagFilter filter, int32_t unit) override
+	{
+		SetTextureBinding(texture, wrapMode, filter, unit, NumTexture);
+	}
 
 	void SetScissor(int32_t x, int32_t y, int32_t width, int32_t height) override;
 

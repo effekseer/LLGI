@@ -8,92 +8,14 @@
 #include "LLGI.ShaderWebGPU.h"
 #include "LLGI.TextureWebGPU.h"
 
-#include <algorithm>
-#include <atomic>
-#include <chrono>
-#include <cstring>
-#include <limits>
-#include <memory>
-#include <thread>
+#include "LLGI.CompletionWebGPU.h"
+#include "LLGI.MipmapGeneratorWebGPU.h"
+#include "LLGI.TextureReadbackWebGPU.h"
 
-#if defined(__EMSCRIPTEN__)
-#include <emscripten.h>
-#endif
+#include <limits>
 
 namespace LLGI
 {
-
-namespace
-{
-struct AsyncWaitState
-{
-	std::atomic<bool> Completed{false};
-	std::atomic<bool> Succeeded{false};
-};
-
-uint32_t AlignTo(uint32_t value, uint32_t alignment) { return (value + alignment - 1) / alignment * alignment; }
-
-uint32_t GetFormatBytesPerPixel(TextureFormatType format)
-{
-	switch (format)
-	{
-	case TextureFormatType::R8_UNORM:
-		return 1;
-	case TextureFormatType::R32G32B32A32_FLOAT:
-		return 16;
-	default:
-		return 4;
-	}
-}
-
-#if defined(__EMSCRIPTEN__)
-void WaitForQueue(wgpu::Queue& queue)
-{
-	auto state = std::make_shared<AsyncWaitState>();
-	queue.OnSubmittedWorkDone(wgpu::CallbackMode::AllowSpontaneous,
-							  [state](wgpu::QueueWorkDoneStatus status, wgpu::StringView)
-							  {
-								  state->Succeeded.store(status == wgpu::QueueWorkDoneStatus::Success, std::memory_order_relaxed);
-								  state->Completed.store(true, std::memory_order_release);
-							  });
-
-	const double waitStart = emscripten_get_now();
-	while (!state->Completed.load(std::memory_order_acquire))
-	{
-		emscripten_sleep(1);
-		if (emscripten_get_now() - waitStart > 5000.0)
-		{
-			break;
-		}
-	}
-
-	if (!state->Completed.load(std::memory_order_acquire) || !state->Succeeded.load(std::memory_order_relaxed))
-	{
-		Log(LogType::Warning, "Timed out or failed while waiting for WebGPU queue completion.");
-	}
-}
-#else
-void WaitForQueue(wgpu::Instance& instance, wgpu::Queue& queue)
-{
-	if (instance == nullptr)
-	{
-		return;
-	}
-
-	bool succeeded = false;
-	auto future = queue.OnSubmittedWorkDone(wgpu::CallbackMode::WaitAnyOnly,
-											[&succeeded](wgpu::QueueWorkDoneStatus status, wgpu::StringView)
-											{ succeeded = status == wgpu::QueueWorkDoneStatus::Success; });
-	instance.WaitAny(future, std::numeric_limits<uint64_t>::max());
-
-	if (!succeeded)
-	{
-		Log(LogType::Warning, "Failed while waiting for WebGPU queue completion.");
-	}
-}
-#endif
-} // namespace
-
 class SingleFrameMemoryPoolWebGPU : public SingleFrameMemoryPool
 {
 	wgpu::Device device_;
@@ -122,11 +44,11 @@ public:
 	SingleFrameMemoryPoolWebGPU(wgpu::Device device, int32_t swapBufferCount) : SingleFrameMemoryPool(swapBufferCount), device_(device) {}
 };
 
-GraphicsWebGPU::GraphicsWebGPU(wgpu::Device device) : device_(device) { queue_ = device.GetQueue(); }
+GraphicsWebGPU::GraphicsWebGPU(wgpu::Device device) : GraphicsWebGPU(device, nullptr) {}
 
-GraphicsWebGPU::GraphicsWebGPU(wgpu::Device device, wgpu::Instance instance) : device_(device), instance_(instance)
+GraphicsWebGPU::GraphicsWebGPU(wgpu::Device device, wgpu::Instance instance)
+	: device_(device), instance_(instance), queue_(device.GetQueue()), mipmaps_(std::make_shared<WebGPU::MipmapGenerator>(device))
 {
-	queue_ = device.GetQueue();
 }
 
 void GraphicsWebGPU::SetWindowSize(const Vec2I& windowSize) {}
@@ -141,21 +63,23 @@ void GraphicsWebGPU::Execute(CommandList* commandList)
 
 void GraphicsWebGPU::WaitFinish()
 {
-#if defined(__EMSCRIPTEN__)
-	if (queue_ != nullptr)
+	if (!queue_)
+		return;
+#ifndef __EMSCRIPTEN__
+	if (instance_)
 	{
-		WaitForQueue(queue_);
-	}
-#else
-	if (queue_ != nullptr && instance_ != nullptr)
-	{
-		WaitForQueue(instance_, queue_);
-	}
-	else if (device_ != nullptr)
-	{
-		device_.Tick();
+		// Native instances support an unbounded wait for all submitted work.
+		auto status = std::make_shared<wgpu::QueueWorkDoneStatus>();
+		auto future = queue_.OnSubmittedWorkDone(wgpu::CallbackMode::WaitAnyOnly,
+												 [status](wgpu::QueueWorkDoneStatus result, wgpu::StringView) { *status = result; });
+		if (instance_.WaitAny(future, std::numeric_limits<uint64_t>::max()) != wgpu::WaitStatus::Success ||
+			*status != wgpu::QueueWorkDoneStatus::Success)
+			Log(LogType::Warning, "Failed while waiting for WebGPU queue completion.");
+		return;
 	}
 #endif
+	if (!WebGPU::WaitForCompletion(device_, WebGPU::ObserveQueue(queue_)))
+		Log(LogType::Warning, "Timed out or failed while waiting for WebGPU queue completion.");
 }
 
 Buffer* GraphicsWebGPU::CreateBuffer(BufferUsageType usage, int32_t size)
@@ -181,13 +105,7 @@ Shader* GraphicsWebGPU::CreateShader(DataStructure* data, int32_t count)
 	return obj;
 }
 
-PipelineState* GraphicsWebGPU::CreatePiplineState()
-{
-	auto pipelineState = new PipelineStateWebGPU(GetDevice());
-
-	// TODO : error check
-	return pipelineState;
-}
+PipelineState* GraphicsWebGPU::CreatePiplineState() { return new PipelineStateWebGPU(GetDevice()); }
 
 SingleFrameMemoryPool* GraphicsWebGPU::CreateSingleFrameMemoryPool(int32_t constantBufferPoolSize, int32_t drawingCount)
 {
@@ -198,21 +116,8 @@ CommandList* GraphicsWebGPU::CreateCommandList(SingleFrameMemoryPool* memoryPool
 
 RenderPass* GraphicsWebGPU::CreateRenderPass(Texture** textures, int32_t textureCount, Texture* depthTexture)
 {
-	assert(textures != nullptr);
-	if (textures == nullptr)
-		return nullptr;
-
-	for (int32_t i = 0; i < textureCount; i++)
-	{
-		assert(textures[i] != nullptr);
-		if (textures[i] == nullptr)
-			return nullptr;
-	}
-
-	auto dt = static_cast<TextureWebGPU*>(depthTexture);
-
 	auto renderPass = new RenderPassWebGPU();
-	if (!renderPass->Initialize(textures, textureCount, dt, nullptr, nullptr))
+	if (!renderPass->Initialize(textures, textureCount, depthTexture, nullptr, nullptr))
 	{
 		SafeRelease(renderPass);
 	}
@@ -226,12 +131,8 @@ GraphicsWebGPU::CreateRenderPass(Texture* texture, Texture* resolvedTexture, Tex
 	if (texture == nullptr)
 		return nullptr;
 
-	auto dt = static_cast<const TextureWebGPU*>(depthTexture);
-	auto rt = static_cast<const TextureWebGPU*>(resolvedTexture);
-	auto rdt = static_cast<const TextureWebGPU*>(resolvedDepthTexture);
-
 	auto renderPass = new RenderPassWebGPU();
-	if (!renderPass->Initialize((&texture), 1, (TextureWebGPU*)dt, (TextureWebGPU*)rt, (TextureWebGPU*)rdt))
+	if (!renderPass->Initialize(&texture, 1, depthTexture, resolvedTexture, resolvedDepthTexture))
 	{
 		SafeRelease(renderPass);
 	}
@@ -244,7 +145,7 @@ Texture* GraphicsWebGPU::CreateTexture(uint64_t id) { return nullptr; }
 Texture* GraphicsWebGPU::CreateTexture(const TextureParameter& parameter)
 {
 	auto obj = new TextureWebGPU();
-	if (!obj->Initialize(GetDevice(), parameter, instance_))
+	if (!obj->Initialize(GetDevice(), parameter, instance_, mipmaps_))
 	{
 		SafeRelease(obj);
 		return nullptr;
@@ -296,204 +197,29 @@ Texture* GraphicsWebGPU::CreateDepthTexture(const DepthTextureInitializationPara
 
 std::vector<uint8_t> GraphicsWebGPU::CaptureRenderTarget(Texture* renderTarget)
 {
-	auto texture = static_cast<TextureWebGPU*>(renderTarget);
-	if (texture == nullptr)
+	std::vector<uint8_t> data;
+	if (auto* texture = static_cast<TextureWebGPU*>(renderTarget))
 	{
-		return std::vector<uint8_t>();
+		const auto size = texture->GetSizeAs2D();
+		if (!WebGPU::TextureReadback(device_, texture->GetTexture(), texture->GetFormat(), {size.X, size.Y, 1})
+				 .Read(device_, instance_, data))
+			Log(LogType::Warning, "Failed to read WebGPU render target.");
 	}
-
-	const auto size = texture->GetSizeAs2D();
-	const auto bytesPerPixel = GetFormatBytesPerPixel(texture->GetFormat());
-	const auto unalignedBytesPerRow = static_cast<uint32_t>(size.X) * bytesPerPixel;
-	const auto bytesPerRow = AlignTo(unalignedBytesPerRow, 256);
-	const auto bufferSize = static_cast<uint64_t>(bytesPerRow) * static_cast<uint32_t>(size.Y);
-
-	wgpu::BufferDescriptor bufferDesc{};
-	bufferDesc.size = bufferSize;
-	bufferDesc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::MapRead;
-	auto readbackBuffer = device_.CreateBuffer(&bufferDesc);
-
-	wgpu::CommandEncoderDescriptor encoderDesc{};
-	auto encoder = device_.CreateCommandEncoder(&encoderDesc);
-
-	wgpu::TexelCopyTextureInfo src{};
-	src.texture = texture->GetTexture();
-	src.aspect = wgpu::TextureAspect::All;
-
-	wgpu::TexelCopyBufferInfo dst{};
-	dst.buffer = readbackBuffer;
-	dst.layout.offset = 0;
-	dst.layout.bytesPerRow = bytesPerRow;
-	dst.layout.rowsPerImage = static_cast<uint32_t>(size.Y);
-
-	wgpu::Extent3D extent{};
-	extent.width = static_cast<uint32_t>(size.X);
-	extent.height = static_cast<uint32_t>(size.Y);
-	extent.depthOrArrayLayers = 1;
-	encoder.CopyTextureToBuffer(&src, &dst, &extent);
-
-	auto commandBuffer = encoder.Finish();
-	queue_.Submit(1, &commandBuffer);
-
-	auto state = std::make_shared<AsyncWaitState>();
-	auto future = readbackBuffer.MapAsync(wgpu::MapMode::Read,
-										  0,
-										  bufferSize,
-#if defined(__EMSCRIPTEN__)
-										  wgpu::CallbackMode::AllowSpontaneous,
-#else
-										  instance_ != nullptr ? wgpu::CallbackMode::WaitAnyOnly : wgpu::CallbackMode::AllowProcessEvents,
-#endif
-										  [state](wgpu::MapAsyncStatus status, wgpu::StringView)
-										  {
-											  state->Succeeded.store(status == wgpu::MapAsyncStatus::Success, std::memory_order_relaxed);
-											  state->Completed.store(true, std::memory_order_release);
-										  });
-
-	if (instance_ != nullptr)
-	{
-		instance_.WaitAny(future, 5ULL * 1000ULL * 1000ULL * 1000ULL);
-	}
-	else
-	{
-#if defined(__EMSCRIPTEN__)
-		const double waitStart = emscripten_get_now();
-		while (!state->Completed.load(std::memory_order_acquire))
-		{
-			emscripten_sleep(1);
-			if (emscripten_get_now() - waitStart > 5000.0)
-			{
-				break;
-			}
-		}
-#else
-		const auto waitStart = std::chrono::steady_clock::now();
-		while (!state->Completed.load(std::memory_order_acquire))
-		{
-			device_.Tick();
-			if (std::chrono::steady_clock::now() - waitStart > std::chrono::seconds(5))
-			{
-				break;
-			}
-			std::this_thread::sleep_for(std::chrono::milliseconds(1));
-		}
-#endif
-	}
-
-	std::vector<uint8_t> ret(static_cast<size_t>(unalignedBytesPerRow) * static_cast<size_t>(size.Y));
-	if (!state->Completed.load(std::memory_order_acquire) || !state->Succeeded.load(std::memory_order_relaxed))
-	{
-		Log(LogType::Warning, "Timed out or failed while waiting for WebGPU readback.");
-		return ret;
-	}
-
-	auto mapped = static_cast<const uint8_t*>(readbackBuffer.GetConstMappedRange(0, bufferSize));
-	for (int32_t y = 0; y < size.Y; y++)
-	{
-		memcpy(ret.data() + static_cast<size_t>(y) * unalignedBytesPerRow,
-			   mapped + static_cast<size_t>(y) * bytesPerRow,
-			   unalignedBytesPerRow);
-	}
-	readbackBuffer.Unmap();
-	return ret;
+	return data;
 }
 
 void GraphicsWebGPU::CaptureRenderTargetAsync(Texture* renderTarget, std::function<void(std::vector<uint8_t>)> callback)
 {
-	struct ReadbackState
+	if (!callback)
+		return;
+	if (!renderTarget)
 	{
-		wgpu::Buffer Buffer;
-		uint32_t UnalignedBytesPerRow = 0;
-		uint32_t BytesPerRow = 0;
-		int32_t Height = 0;
-		uint64_t BufferSize = 0;
-		std::function<void(std::vector<uint8_t>)> Callback;
-	};
-
-	auto* texture = static_cast<TextureWebGPU*>(renderTarget);
-	if (texture == nullptr || !callback)
-	{
-		if (callback)
-		{
-			callback({});
-		}
+		callback({});
 		return;
 	}
-
+	auto* texture = static_cast<TextureWebGPU*>(renderTarget);
 	const auto size = texture->GetSizeAs2D();
-	const auto bytesPerPixel = GetFormatBytesPerPixel(texture->GetFormat());
-	const auto unalignedBytesPerRow = static_cast<uint32_t>(size.X) * bytesPerPixel;
-	const auto bytesPerRow = AlignTo(unalignedBytesPerRow, 256);
-	const auto bufferSize = static_cast<uint64_t>(bytesPerRow) * static_cast<uint32_t>(size.Y);
-
-	wgpu::BufferDescriptor bufferDesc{};
-	bufferDesc.size = bufferSize;
-	bufferDesc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::MapRead;
-	auto state = std::make_shared<ReadbackState>();
-	state->Buffer = device_.CreateBuffer(&bufferDesc);
-	state->UnalignedBytesPerRow = unalignedBytesPerRow;
-	state->BytesPerRow = bytesPerRow;
-	state->Height = size.Y;
-	state->BufferSize = bufferSize;
-	state->Callback = std::move(callback);
-
-	auto encoder = device_.CreateCommandEncoder();
-	wgpu::TexelCopyTextureInfo src{};
-	src.texture = texture->GetTexture();
-	src.aspect = wgpu::TextureAspect::All;
-	wgpu::TexelCopyBufferInfo dst{};
-	dst.buffer = state->Buffer;
-	dst.layout.bytesPerRow = bytesPerRow;
-	dst.layout.rowsPerImage = static_cast<uint32_t>(size.Y);
-	wgpu::Extent3D extent{};
-	extent.width = static_cast<uint32_t>(size.X);
-	extent.height = static_cast<uint32_t>(size.Y);
-	extent.depthOrArrayLayers = 1;
-	encoder.CopyTextureToBuffer(&src, &dst, &extent);
-	auto commandBuffer = encoder.Finish();
-	queue_.Submit(1, &commandBuffer);
-
-	state->Buffer.MapAsync(wgpu::MapMode::Read,
-						   0,
-						   bufferSize,
-						   wgpu::CallbackMode::AllowSpontaneous,
-						   [state](wgpu::MapAsyncStatus status, wgpu::StringView message)
-						   {
-							   std::vector<uint8_t> result;
-							   if (status == wgpu::MapAsyncStatus::Success)
-							   {
-								   result.resize(static_cast<size_t>(state->UnalignedBytesPerRow) * static_cast<size_t>(state->Height));
-								   auto mapped = static_cast<const uint8_t*>(state->Buffer.GetConstMappedRange(0, state->BufferSize));
-								   if (mapped == nullptr)
-								   {
-#if defined(__EMSCRIPTEN__)
-									   emscripten_log(EM_LOG_ERROR, "LLGI WebGPU async readback returned no mapped range.");
-#endif
-									   result.clear();
-								   }
-								   for (int32_t y = 0; mapped != nullptr && y < state->Height; y++)
-								   {
-									   memcpy(result.data() + static_cast<size_t>(y) * state->UnalignedBytesPerRow,
-											  mapped + static_cast<size_t>(y) * state->BytesPerRow,
-											  state->UnalignedBytesPerRow);
-								   }
-								   if (mapped != nullptr)
-								   {
-									   state->Buffer.Unmap();
-								   }
-							   }
-							   else
-							   {
-#if defined(__EMSCRIPTEN__)
-								   emscripten_log(EM_LOG_ERROR,
-												  "LLGI WebGPU async readback MapAsync failed: status=%d message=%.*s",
-												  static_cast<int>(status),
-												  static_cast<int>(message.length),
-												  message.data != nullptr ? message.data : "");
-#endif
-							   }
-							   state->Callback(std::move(result));
-						   });
+	WebGPU::TextureReadback(device_, texture->GetTexture(), texture->GetFormat(), {size.X, size.Y, 1}).ReadAsync(std::move(callback));
 }
 
 RenderPassPipelineState* GraphicsWebGPU::CreateRenderPassPipelineState(RenderPass* renderPass)

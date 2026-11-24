@@ -7,20 +7,13 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
-#include <chrono>
 #include <memory>
 #include <string>
-#include <thread>
-
-#if defined(__EMSCRIPTEN__)
-#include <emscripten.h>
-#endif
 
 namespace LLGI
 {
 namespace
 {
-constexpr uint32_t TextureBytesPerRowAlignment = 256;
 constexpr std::array<wgpu::FilterMode, 2> TextureFilterModes = {
 	wgpu::FilterMode::Nearest,
 	wgpu::FilterMode::Linear,
@@ -31,19 +24,6 @@ constexpr std::array<wgpu::AddressMode, 3> TextureAddressModes = {
 	wgpu::AddressMode::MirrorRepeat,
 };
 
-ShaderResourceType GetTextureBindingResourceType(TextureWebGPU* texture)
-{
-	if (texture != nullptr && BitwiseContains(texture->GetParameter().Usage, TextureUsageType::Storage))
-	{
-		return ShaderResourceType::StorageTexture;
-	}
-	return ShaderResourceType::Texture;
-}
-
-bool NeedsTextureSampler(TextureWebGPU* texture)
-{
-	return texture == nullptr || !BitwiseContains(texture->GetParameter().Usage, TextureUsageType::Storage);
-}
 } // namespace
 
 bool CommandListWebGPU::BindGroupCache::Matches(const wgpu::BindGroupDescriptor& desc) const
@@ -77,6 +57,7 @@ void CommandListWebGPU::ClearBindGroupEntries()
 
 void CommandListWebGPU::FinishRecording()
 {
+	EndComputePass();
 	ClearBindGroupEntries();
 	ResetRenderState(false);
 	for (auto& bucket : bindGroupBuckets_)
@@ -123,7 +104,7 @@ wgpu::BindGroup CommandListWebGPU::GetBindGroup(const wgpu::BindGroupDescriptor&
 
 bool CommandListWebGPU::PrepareStandaloneCommand(const char* commandName)
 {
-	if (isInRenderPass_ && !doesBeginWithPlatform_)
+	if (renderPassEncoder_)
 	{
 		Log(LogType::Error, std::string("Please call ") + commandName + " outside of RenderPass");
 		return false;
@@ -144,51 +125,37 @@ CommandListWebGPU::CommandListWebGPU(wgpu::Device device) : CommandList(Retained
 	fallbackTextureDesc.size.width = 1;
 	fallbackTextureDesc.size.height = 1;
 	fallbackTextureDesc.size.depthOrArrayLayers = 1;
-	fallbackTexture_ = device_.CreateTexture(&fallbackTextureDesc);
-	fallbackTextureView_ = fallbackTexture_.CreateView();
+	auto fallbackTexture = device_.CreateTexture(&fallbackTextureDesc);
+	fallbackTextureView_ = fallbackTexture.CreateView();
 
-	std::array<uint8_t, TextureBytesPerRowAlignment> fallbackTextureData{};
-	fallbackTextureData[0] = 255;
-	fallbackTextureData[1] = 255;
-	fallbackTextureData[2] = 255;
-	fallbackTextureData[3] = 255;
-	wgpu::TexelCopyTextureInfo fallbackDst{};
-	fallbackDst.texture = fallbackTexture_;
-	fallbackDst.aspect = wgpu::TextureAspect::All;
-	wgpu::TexelCopyBufferLayout fallbackLayout{};
-	fallbackLayout.bytesPerRow = TextureBytesPerRowAlignment;
-	fallbackLayout.rowsPerImage = 1;
-	wgpu::Extent3D fallbackExtent{};
-	fallbackExtent.width = 1;
-	fallbackExtent.height = 1;
-	fallbackExtent.depthOrArrayLayers = 1;
-	device_.GetQueue().WriteTexture(&fallbackDst, fallbackTextureData.data(), fallbackTextureData.size(), &fallbackLayout, &fallbackExtent);
+	const std::array<uint8_t, 4> white = {255, 255, 255, 255};
+	wgpu::TexelCopyTextureInfo destination{};
+	destination.texture = fallbackTexture;
+	wgpu::TexelCopyBufferLayout layout{};
+	device_.GetQueue().WriteTexture(&destination, white.data(), white.size(), &layout, &fallbackTextureDesc.size);
+}
 
-	for (int w = 0; w < 3; w++)
+const wgpu::Sampler& CommandListWebGPU::GetSampler(size_t wrap, size_t filter, bool comparison)
+{
+	auto& sampler = comparison ? comparisonSamplers_[wrap][filter] : samplers_[wrap][filter];
+	if (!sampler)
 	{
-		for (int f = 0; f < 2; f++)
-		{
-			wgpu::SamplerDescriptor samplerDesc{};
-
-			samplerDesc.magFilter = TextureFilterModes[f];
-			samplerDesc.minFilter = TextureFilterModes[f];
-			samplerDesc.mipmapFilter = wgpu::MipmapFilterMode::Linear;
-			samplerDesc.lodMinClamp = 0.0f;
-			samplerDesc.lodMaxClamp = 32.0f;
-			samplerDesc.maxAnisotropy = 1;
-			samplerDesc.addressModeU = TextureAddressModes[w];
-			samplerDesc.addressModeV = TextureAddressModes[w];
-			samplerDesc.addressModeW = TextureAddressModes[w];
-			samplers_[w][f] = device.CreateSampler(&samplerDesc);
-		}
+		wgpu::SamplerDescriptor desc{};
+		desc.magFilter = desc.minFilter = TextureFilterModes[filter];
+		desc.mipmapFilter = wgpu::MipmapFilterMode::Linear;
+		desc.addressModeU = desc.addressModeV = desc.addressModeW = TextureAddressModes[wrap];
+		if (comparison)
+			desc.compare = wgpu::CompareFunction::LessEqual;
+		sampler = device_.CreateSampler(&desc);
 	}
+	return sampler;
 }
 
 void CommandListWebGPU::Begin()
 {
 	completion_.reset();
 	wgpu::CommandEncoderDescriptor desc = {};
-	commandEncorder_ = device_.CreateCommandEncoder(&desc);
+	commandEncoder_ = device_.CreateCommandEncoder(&desc);
 
 	CommandList::Begin();
 }
@@ -203,7 +170,7 @@ bool CommandListWebGPU::BeginWithPlatform(void* platformContextPtr)
 
 	completion_.reset();
 	commandBuffer_ = nullptr;
-	commandEncorder_ = wgpu::CommandEncoder::Acquire(reinterpret_cast<WGPUCommandEncoder>(platformContextPtr));
+	commandEncoder_ = wgpu::CommandEncoder::Acquire(reinterpret_cast<WGPUCommandEncoder>(platformContextPtr));
 
 	return CommandList::BeginWithPlatform(platformContextPtr);
 }
@@ -211,8 +178,8 @@ bool CommandListWebGPU::BeginWithPlatform(void* platformContextPtr)
 void CommandListWebGPU::End()
 {
 	FinishRecording();
-	commandBuffer_ = commandEncorder_.Finish();
-	commandEncorder_ = nullptr;
+	commandBuffer_ = commandEncoder_.Finish();
+	commandEncoder_ = nullptr;
 
 	CommandList::End();
 }
@@ -220,7 +187,7 @@ void CommandListWebGPU::End()
 void CommandListWebGPU::EndWithPlatform()
 {
 	FinishRecording();
-	commandEncorder_ = nullptr;
+	commandEncoder_ = nullptr;
 	commandBuffer_ = nullptr;
 
 	CommandList::EndWithPlatform();
@@ -229,8 +196,9 @@ void CommandListWebGPU::EndWithPlatform()
 bool CommandListWebGPU::SetViewport(float x, float y, float width, float height, float minDepth, float maxDepth)
 {
 	if (!ValidateViewport(x, y, width, height, minDepth, maxDepth)) return false;
-	if (renderPassEncorder_ == nullptr) return false;
-	renderPassEncorder_.SetViewport(x, y, width, height, minDepth, maxDepth);
+	if (renderPassEncoder_ == nullptr)
+		return false;
+	renderPassEncoder_.SetViewport(x, y, width, height, minDepth, maxDepth);
 	return true;
 }
 
@@ -242,8 +210,8 @@ void CommandListWebGPU::BeginRenderPass(RenderPass* renderPass)
 	rp->RefreshDescriptor();
 	const auto& desc = rp->GetDescriptor();
 
-	renderPassEncorder_ = commandEncorder_.BeginRenderPass(&desc);
-	renderPassEncorder_.SetViewport(
+	renderPassEncoder_ = commandEncoder_.BeginRenderPass(&desc);
+	renderPassEncoder_.SetViewport(
 		0.0f, 0.0f, static_cast<float>(rp->GetScreenSize().X), static_cast<float>(rp->GetScreenSize().Y), 0.0f, 1.0f);
 
 	ResetRenderState(true);
@@ -252,10 +220,10 @@ void CommandListWebGPU::BeginRenderPass(RenderPass* renderPass)
 
 void CommandListWebGPU::EndRenderPass()
 {
-	if (renderPassEncorder_ != nullptr)
+	if (renderPassEncoder_ != nullptr)
 	{
-		renderPassEncorder_.End();
-		renderPassEncorder_ = nullptr;
+		renderPassEncoder_.End();
+		renderPassEncoder_ = nullptr;
 	}
 	CommandList::EndRenderPass();
 }
@@ -270,7 +238,7 @@ bool CommandListWebGPU::BeginRenderPassWithPlatformPtr(void* platformPtr, bool e
 	}
 
 	EndComputePass();
-	renderPassEncorder_ = wgpu::RenderPassEncoder::Acquire(reinterpret_cast<WGPURenderPassEncoder>(platformPtr));
+	renderPassEncoder_ = wgpu::RenderPassEncoder::Acquire(reinterpret_cast<WGPURenderPassEncoder>(platformPtr));
 
 	ResetRenderState(exclusive);
 	return CommandList::BeginRenderPassWithPlatformPtr(platformPtr);
@@ -278,36 +246,38 @@ bool CommandListWebGPU::BeginRenderPassWithPlatformPtr(void* platformPtr, bool e
 
 bool CommandListWebGPU::EndRenderPassWithPlatformPtr()
 {
-	if (renderPassEncorder_ != nullptr)
-	{
-		renderPassEncorder_ = nullptr;
-	}
-
+	renderPassEncoder_ = nullptr;
 	CommandList::EndRenderPass();
 	return true;
 }
 
 void CommandListWebGPU::BeginComputePass()
 {
-	if (computePassEncorder_ != nullptr)
+	if (renderPassEncoder_ || !commandEncoder_)
+	{
+		Log(LogType::Error, "BeginComputePass requires a command encoder outside of RenderPass");
+		return;
+	}
+	if (computePassEncoder_ != nullptr)
 	{
 		return;
 	}
 
 	wgpu::ComputePassDescriptor desc{};
-	computePassEncorder_ = commandEncorder_.BeginComputePass(&desc);
+	computePassEncoder_ = commandEncoder_.BeginComputePass(&desc);
+	CommandList::BeginComputePass();
 }
 
 void CommandListWebGPU::EndComputePass()
 {
-	if (computePassEncorder_ != nullptr)
+	if (computePassEncoder_ != nullptr)
 	{
-		computePassEncorder_.End();
-		computePassEncorder_ = nullptr;
+		computePassEncoder_.End();
+		computePassEncoder_ = nullptr;
 	}
 }
 
-void CommandListWebGPU::BindResources(PipelineStateWebGPU& pipeline, PassType pass)
+bool CommandListWebGPU::BindResources(PipelineStateWebGPU& pipeline, PassType pass)
 {
 	ClearBindGroupEntries();
 	// The shader ABI places storage buffers with textures in render passes and with samplers in compute passes.
@@ -328,38 +298,37 @@ void CommandListWebGPU::BindResources(PipelineStateWebGPU& pipeline, PassType pa
 		wgpu::BindGroupEntry entry = {};
 		entry.binding = static_cast<uint32_t>(unit_ind);
 		entry.buffer = cb->GetBuffer();
-		entry.size = cb->GetAllocatedSize() - cb->GetOffset();
-		entry.offset = cb->GetOffset();
+		entry.size = cb->GetAllocatedSize();
 		bindGroupEntries_[0].push_back(entry);
 	}
 
 	for (int unit_ind = 0; unit_ind < static_cast<int32_t>(currentTextures_.size()); unit_ind++)
 	{
-		// For automatic layouts only the caller can identify a texture slot (including an explicitly bound null texture).
+		auto texture = static_cast<TextureWebGPU*>(currentTextures_[unit_ind].texture);
 		if (!pipeline.HasBindingReflection() && !currentTextures_[unit_ind].isBound)
 			continue;
-		auto texture = static_cast<TextureWebGPU*>(currentTextures_[unit_ind].texture);
-		const auto resourceType = GetTextureBindingResourceType(texture);
-		if (!pipeline.HasBinding(1, static_cast<uint32_t>(unit_ind), resourceType))
-			continue;
-		auto wm = (int32_t)currentTextures_[unit_ind].wrapMode;
-		auto mm = (int32_t)currentTextures_[unit_ind].minMagFilter;
-
-		wgpu::BindGroupEntry textureEntry = {};
-		textureEntry.binding = unit_ind;
-		textureEntry.textureView = texture != nullptr ? texture->GetTextureView() : fallbackTextureView_;
-		bindGroupEntries_[1].push_back(textureEntry);
-
-		wgpu::BindGroupEntry samplerEntry = {};
-		if (NeedsTextureSampler(texture))
+		const bool storage = texture && BitwiseContains(texture->GetUsage(), TextureUsageType::Storage) &&
+							 pipeline.HasBinding(1, unit_ind, ShaderResourceType::StorageTexture);
+		if (storage || pipeline.HasBinding(1, unit_ind, ShaderResourceType::Texture))
 		{
-			if (!pipeline.HasBinding(2, static_cast<uint32_t>(unit_ind), ShaderResourceType::Sampler))
+			if (!texture && !pipeline.SupportsWhiteFallback(unit_ind))
 			{
-				continue;
+				Log(LogType::Error, "Missing required WebGPU texture at slot " + std::to_string(unit_ind));
+				return false;
 			}
-			samplerEntry.binding = unit_ind;
-			samplerEntry.sampler = samplers_[wm][mm];
-			bindGroupEntries_[2].push_back(samplerEntry);
+			wgpu::BindGroupEntry entry{};
+			entry.binding = unit_ind;
+			entry.textureView = storage ? texture->GetBaseMipView() : (texture ? texture->GetSampledView() : fallbackTextureView_);
+			bindGroupEntries_[1].push_back(entry);
+		}
+		if (pipeline.HasBinding(2, unit_ind, ShaderResourceType::Sampler))
+		{
+			const auto wrap = static_cast<size_t>(currentTextures_[unit_ind].wrapMode);
+			const auto filter = static_cast<size_t>(currentTextures_[unit_ind].minMagFilter);
+			wgpu::BindGroupEntry entry{};
+			entry.binding = unit_ind;
+			entry.sampler = GetSampler(wrap, filter, pipeline.UsesComparisonSampler(unit_ind));
+			bindGroupEntries_[2].push_back(entry);
 		}
 	}
 
@@ -379,7 +348,6 @@ void CommandListWebGPU::BindResources(PipelineStateWebGPU& pipeline, PassType pa
 		wgpu::BindGroupEntry bufferEntry = {};
 		bufferEntry.binding = static_cast<uint32_t>(unit_ind);
 		bufferEntry.buffer = buffer->GetBuffer();
-		bufferEntry.offset = buffer->GetOffset();
 		bufferEntry.size = buffer->GetSize();
 		bindGroupEntries_[storageGroup].push_back(bufferEntry);
 	}
@@ -387,8 +355,23 @@ void CommandListWebGPU::BindResources(PipelineStateWebGPU& pipeline, PassType pa
 	for (uint32_t slot = 0; slot < bindGroupEntries_.size(); ++slot)
 	{
 		const auto& entries = bindGroupEntries_[slot];
+		if (pipeline.HasBindingReflection() && entries.size() != pipeline.GetBindingCount(slot))
+		{
+			Log(LogType::Error, "Missing required WebGPU resource in group " + std::to_string(slot));
+			return false;
+		}
 		if (entries.empty())
 		{
+			if (!pipeline.HasBindingReflection())
+			{
+				if (pass == PassType::Compute)
+					computePassEncoder_.SetBindGroup(slot, nullptr);
+				else
+				{
+					renderPassEncoder_.SetBindGroup(slot, nullptr);
+					boundGroups_[slot] = nullptr;
+				}
+			}
 			continue;
 		}
 		wgpu::BindGroupDescriptor desc{};
@@ -398,90 +381,68 @@ void CommandListWebGPU::BindResources(PipelineStateWebGPU& pipeline, PassType pa
 		auto group = GetBindGroup(desc);
 		if (pass == PassType::Compute)
 		{
-			computePassEncorder_.SetBindGroup(slot, group);
+			computePassEncoder_.SetBindGroup(slot, group);
 		}
 		else if (!exclusivePass_ || boundGroups_[slot].Get() != group.Get())
 		{
-			renderPassEncorder_.SetBindGroup(slot, group);
+			renderPassEncoder_.SetBindGroup(slot, group);
 			if (exclusivePass_)
 			{
 				boundGroups_[slot] = std::move(group);
 			}
 		}
 	}
+	return true;
 }
 
 void CommandListWebGPU::Draw(int32_t primitiveCount, int32_t instanceCount)
 {
-	BindingVertexBuffer bvb;
-	BindingIndexBuffer bib;
-	PipelineState* bpip = nullptr;
+	BindingVertexBuffer vertex;
+	BindingIndexBuffer index;
+	PipelineState* currentPipeline = nullptr;
+	bool vertexChanged, indexChanged, pipelineChanged;
+	GetCurrentVertexBuffer(vertex, vertexChanged);
+	GetCurrentIndexBuffer(index, indexChanged);
+	GetCurrentPipelineState(currentPipeline, pipelineChanged);
 
-	bool isVBDirtied = false;
-	bool isIBDirtied = false;
-	bool isPipDirtied = false;
-
-	GetCurrentVertexBuffer(bvb, isVBDirtied);
-	GetCurrentIndexBuffer(bib, isIBDirtied);
-	GetCurrentPipelineState(bpip, isPipDirtied);
-
-	assert(bvb.vertexBuffer != nullptr);
-	assert(bib.indexBuffer != nullptr);
-	assert(bpip != nullptr);
-
-	auto vb = static_cast<BufferWebGPU*>(bvb.vertexBuffer);
-	auto ib = static_cast<BufferWebGPU*>(bib.indexBuffer);
-	auto pip = static_cast<PipelineStateWebGPU*>(bpip);
-
-	if (vb != nullptr && isVBDirtied)
+	if (!renderPassEncoder_ || !vertex.vertexBuffer || !index.indexBuffer || !currentPipeline)
 	{
-		renderPassEncorder_.SetVertexBuffer(0, vb->GetBuffer(), bvb.offset, bvb.vertexBuffer->GetSize() - bvb.offset);
+		Log(LogType::Error, "Draw requires a render pass, vertex and index buffers, and a pipeline");
+		return;
 	}
 
-	if (ib != nullptr && isIBDirtied)
+	if (!exclusivePass_ || vertexChanged)
 	{
-		const auto format = bib.stride == 2 ? wgpu::IndexFormat::Uint16 : wgpu::IndexFormat::Uint32;
-		renderPassEncorder_.SetIndexBuffer(ib->GetBuffer(), format, bib.offset, ib->GetSize() - bib.offset);
+		auto buffer = static_cast<BufferWebGPU*>(vertex.vertexBuffer);
+		renderPassEncoder_.SetVertexBuffer(0, buffer->GetBuffer(), vertex.offset, buffer->GetSize() - vertex.offset);
+	}
+	if (!exclusivePass_ || indexChanged)
+	{
+		auto buffer = static_cast<BufferWebGPU*>(index.indexBuffer);
+		const auto format = index.stride == 2 ? wgpu::IndexFormat::Uint16 : wgpu::IndexFormat::Uint32;
+		renderPassEncoder_.SetIndexBuffer(buffer->GetBuffer(), format, index.offset, buffer->GetSize() - index.offset);
 	}
 
-	if (pip != nullptr && isPipDirtied)
+	auto pipeline = static_cast<PipelineStateWebGPU*>(currentPipeline);
+	if (!exclusivePass_ || pipelineChanged)
 	{
-		const auto& pipeline = pip->GetRenderPipeline();
-		if (!exclusivePass_ || pipeline.Get() != boundPipeline_.Get())
+		const auto& handle = pipeline->GetRenderPipeline();
+		if (!exclusivePass_ || handle.Get() != boundPipeline_.Get())
 		{
-			renderPassEncorder_.SetPipeline(pipeline);
+			renderPassEncoder_.SetPipeline(handle);
 			if (exclusivePass_)
-				boundPipeline_ = pipeline;
+				boundPipeline_ = handle;
 		}
-		if (!exclusivePass_ || stencilReference_ != pip->StencilRef)
+		if (!exclusivePass_ || stencilReference_ != pipeline->StencilRef)
 		{
-			renderPassEncorder_.SetStencilReference(pip->StencilRef);
-			stencilReference_ = pip->StencilRef;
+			renderPassEncoder_.SetStencilReference(pipeline->StencilRef);
+			stencilReference_ = pipeline->StencilRef;
 		}
 	}
 
-	BindResources(*pip, PassType::Render);
-
-	int indexPerPrim = 0;
-
-	if (pip->Topology == TopologyType::Triangle)
-	{
-		indexPerPrim = 3;
-	}
-	else if (pip->Topology == TopologyType::Line)
-	{
-		indexPerPrim = 2;
-	}
-	else if (pip->Topology == TopologyType::Point)
-	{
-		indexPerPrim = 1;
-	}
-	else
-	{
-		assert(0);
-	}
-
-	renderPassEncorder_.DrawIndexed(primitiveCount * indexPerPrim, instanceCount, 0, 0, 0);
+	if (!BindResources(*pipeline, PassType::Render))
+		return;
+	renderPassEncoder_.DrawIndexed(primitiveCount * GetIndexCountPerPrimitive(pipeline->Topology), instanceCount);
 	CommandList::Draw(primitiveCount, instanceCount);
 }
 
@@ -496,27 +457,24 @@ void CommandListWebGPU::Dispatch(int32_t groupX, int32_t groupY, int32_t groupZ,
 		return;
 	}
 
-	bool isComputePassStarted = false;
-	if (computePassEncorder_ == nullptr)
+	if (computePassEncoder_ == nullptr || isPipDirtied)
 	{
 		BeginComputePass();
-		isComputePassStarted = true;
+		if (!computePassEncoder_)
+			return;
+		computePassEncoder_.SetPipeline(pip->GetComputePipeline());
 	}
 
-	if (isComputePassStarted || isPipDirtied)
-	{
-		computePassEncorder_.SetPipeline(pip->GetComputePipeline());
-	}
+	if (!BindResources(*pip, PassType::Compute))
+		return;
 
-	BindResources(*pip, PassType::Compute);
-
-	computePassEncorder_.DispatchWorkgroups(groupX, groupY, groupZ);
+	computePassEncoder_.DispatchWorkgroups(groupX, groupY, groupZ);
 	CommandList::Dispatch(groupX, groupY, groupZ, threadX, threadY, threadZ);
 }
 
 void CommandListWebGPU::SetScissor(int32_t x, int32_t y, int32_t width, int32_t height)
 {
-	renderPassEncorder_.SetScissorRect(x, y, width, height);
+	renderPassEncoder_.SetScissorRect(x, y, width, height);
 }
 
 void CommandListWebGPU::CopyTexture(Texture* src, Texture* dst)
@@ -550,7 +508,7 @@ void CommandListWebGPU::CopyTexture(
 	extend3d.height = size.Y;
 	extend3d.depthOrArrayLayers = size.Z;
 
-	commandEncorder_.CopyTextureToTexture(&srcTexCopy, &dstTexCopy, &extend3d);
+	commandEncoder_.CopyTextureToTexture(&srcTexCopy, &dstTexCopy, &extend3d);
 }
 
 void CommandListWebGPU::GenerateMipMap(Texture* src)
@@ -564,7 +522,7 @@ void CommandListWebGPU::GenerateMipMap(Texture* src)
 		return;
 	}
 
-	srcTex->GenerateMipMaps(commandEncorder_);
+	srcTex->GenerateMipMaps(commandEncoder_);
 }
 
 void CommandListWebGPU::CopyBuffer(Buffer* src, Buffer* dst)
@@ -579,8 +537,7 @@ void CommandListWebGPU::CopyBuffer(Buffer* src, Buffer* dst)
 		return;
 	}
 
-	commandEncorder_.CopyBufferToBuffer(
-		srcBuffer->GetBuffer(), 0, dstBuffer->GetBuffer(), 0, std::min(srcBuffer->GetSize(), dstBuffer->GetSize()));
+	srcBuffer->CopyTo(commandEncoder_, *dstBuffer);
 
 	RegisterReferencedObject(src);
 	RegisterReferencedObject(dst);
@@ -593,51 +550,14 @@ void CommandListWebGPU::WaitUntilCompleted()
 		return;
 	}
 	// A host can submit directly without calling TrackSubmission. Observe that queue at the time of the wait.
-	const auto state = completion_ ? completion_ : ObserveQueueCompletion();
-
-#if defined(__EMSCRIPTEN__)
-	const double waitStart = emscripten_get_now();
-	while (state->load(std::memory_order_acquire) == SubmissionStatus::Pending)
-	{
-		emscripten_sleep(1);
-		if (emscripten_get_now() - waitStart > 5000.0)
-		{
-			break;
-		}
-	}
-#else
-	const auto waitStart = std::chrono::steady_clock::now();
-	while (state->load(std::memory_order_acquire) == SubmissionStatus::Pending)
-	{
-		device_.Tick();
-		if (std::chrono::steady_clock::now() - waitStart > std::chrono::seconds(5))
-		{
-			break;
-		}
-		std::this_thread::sleep_for(std::chrono::milliseconds(1));
-	}
-#endif
-
-	if (state->load(std::memory_order_acquire) != SubmissionStatus::Completed)
+	const auto state = completion_ ? completion_ : WebGPU::ObserveQueue(device_.GetQueue());
+	if (!WebGPU::WaitForCompletion(device_, state))
 	{
 		Log(LogType::Warning, "Timed out or failed while waiting for WebGPU command completion.");
 	}
 }
 
-CommandListWebGPU::Completion CommandListWebGPU::ObserveQueueCompletion() const
-{
-	auto state = std::make_shared<std::atomic<SubmissionStatus>>(SubmissionStatus::Pending);
-	device_.GetQueue().OnSubmittedWorkDone(wgpu::CallbackMode::AllowSpontaneous,
-										   [state](wgpu::QueueWorkDoneStatus status, wgpu::StringView)
-										   {
-											   state->store(status == wgpu::QueueWorkDoneStatus::Success ? SubmissionStatus::Completed
-																										 : SubmissionStatus::Failed,
-															std::memory_order_release);
-										   });
-	return state;
-}
-
-void CommandListWebGPU::TrackSubmission() { completion_ = ObserveQueueCompletion(); }
+void CommandListWebGPU::TrackSubmission() { completion_ = WebGPU::ObserveQueue(device_.GetQueue()); }
 
 bool CommandListWebGPU::TryGetCompleted(bool& completed) const
 {
@@ -647,8 +567,8 @@ bool CommandListWebGPU::TryGetCompleted(bool& completed) const
 		return false;
 	}
 	const auto value = completion_->load(std::memory_order_acquire);
-	completed = value == SubmissionStatus::Completed;
-	return value != SubmissionStatus::Failed;
+	completed = value == WebGPU::CompletionStatus::Succeeded;
+	return value != WebGPU::CompletionStatus::Failed;
 }
 
 } // namespace LLGI

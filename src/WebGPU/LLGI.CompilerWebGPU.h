@@ -3,8 +3,12 @@
 #include "LLGI.BaseWebGPU.h"
 #include "../LLGI.Compiler.h"
 
+#include <string_view>
+
 namespace LLGI
 {
+
+inline constexpr std::string_view WgslCodeHeader = "wgslcode";
 
 class CompilerWebGPU : public Compiler
 {

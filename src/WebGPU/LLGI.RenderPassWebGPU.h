@@ -11,7 +11,7 @@ class RenderPassWebGPU : public RenderPass
 {
 	wgpu::RenderPassDescriptor descriptor_;
 	std::array<wgpu::RenderPassColorAttachment, RenderTargetMax> colorAttachments_;
-	wgpu::RenderPassDepthStencilAttachment depthStencilAttachiment_;
+	wgpu::RenderPassDepthStencilAttachment depthStencilAttachment_;
 
 public:
 	bool
