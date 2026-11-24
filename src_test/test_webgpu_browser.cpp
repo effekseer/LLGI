@@ -4,6 +4,10 @@
 #include "test.h"
 
 #include <Utils/LLGI.CommandListPool.h>
+#include <WebGPU/LLGI.CommandListWebGPU.h>
+#include <WebGPU/LLGI.GraphicsWebGPU.h>
+#include <WebGPU/LLGI.PipelineStateWebGPU.h>
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 
@@ -281,8 +285,137 @@ void test_webgpu_browser_compute_compile(LLGI::DeviceType deviceType)
 
 	auto pipelineState = LLGI::CreateSharedPtr(graphics->CreatePiplineState());
 	VERIFY(pipelineState != nullptr);
-	pipelineState->SetShader(LLGI::ShaderStageType::Compute, shaderCS.get());
-	VERIFY(pipelineState->Compile());
+	auto* pipeline = static_cast<LLGI::PipelineStateWebGPU*>(pipelineState.get());
+	std::shared_ptr<LLGI::Shader> vertex, fragment;
+	TestHelper::CreateShader(
+		graphics.get(), deviceType, "simple_texture_rectangle.vert", "simple_texture_rectangle.frag", vertex, fragment);
+	VERIFY(vertex && fragment);
+	LLGI::RenderPassPipelineStateKey key;
+	key.RenderTargetFormats.resize(1);
+	key.RenderTargetFormats.at(0) = LLGI::TextureFormatType::R8G8B8A8_UNORM;
+	auto renderPassState = LLGI::CreateSharedPtr(graphics->CreateRenderPassPipelineState(key));
+	VERIFY(renderPassState != nullptr);
+	configureSimpleVertexLayout(pipeline);
+	pipeline->SetRenderPassPipelineState(renderPassState.get());
+	pipeline->SetShader(LLGI::ShaderStageType::Vertex, vertex.get());
+	pipeline->SetShader(LLGI::ShaderStageType::Pixel, fragment.get());
+	VERIFY(pipeline->Compile());
+	VERIFY(pipeline->HasBinding(1, 0, LLGI::ShaderResourceType::Texture));
+
+	pipeline->SetShader(LLGI::ShaderStageType::Compute, shaderCS.get());
+	VERIFY(pipeline->Compile());
+	VERIFY(!pipeline->GetRenderPipeline() && pipeline->GetComputePipeline());
+	VERIFY(!pipeline->HasBinding(1, 0, LLGI::ShaderResourceType::Texture));
+	VERIFY(pipeline->HasBinding(2, 0, LLGI::ShaderResourceType::StorageBuffer, LLGI::ShaderResourceAccess::ReadWrite));
+
+	pipeline->SetShader(LLGI::ShaderStageType::Compute, nullptr);
+	VERIFY(pipeline->Compile());
+	VERIFY(pipeline->GetRenderPipeline() && !pipeline->GetComputePipeline());
+	VERIFY(pipeline->HasBinding(1, 0, LLGI::ShaderResourceType::Texture));
+}
+
+void test_webgpu_browser_mip_filter(LLGI::DeviceType deviceType)
+{
+	LLGI::PlatformParameter pp;
+	pp.Device = deviceType;
+	auto platform = LLGI::CreateSharedPtr(LLGI::CreatePlatform(pp, nullptr));
+	VERIFY(platform != nullptr);
+	auto graphics = LLGI::CreateSharedPtr(platform->CreateGraphics());
+	VERIFY(graphics != nullptr);
+	auto* web = static_cast<LLGI::GraphicsWebGPU*>(graphics.get());
+
+	LLGI::TextureParameter desc;
+	desc.Size = {2, 2, 1};
+	desc.Format = LLGI::TextureFormatType::R8G8B8A8_UNORM;
+	desc.MipLevelCount = 2;
+	desc.IsMipmapGenerationEnabled = false;
+	auto texture = LLGI::CreateSharedPtr(graphics->CreateTexture(desc));
+	VERIFY(texture != nullptr);
+	auto* pixels = static_cast<uint8_t*>(texture->Lock());
+	VERIFY(pixels != nullptr);
+	std::fill_n(pixels, 16, uint8_t{0});
+	std::fill_n(pixels + 16, 4, uint8_t{255});
+	texture->Unlock();
+
+	std::shared_ptr<LLGI::Shader> shader;
+	TestHelper::CreateComputeShader(graphics.get(), deviceType, "mip_filter.comp", shader);
+	auto pipeline = LLGI::CreateSharedPtr(graphics->CreatePiplineState());
+	VERIFY(shader && pipeline);
+	pipeline->SetShader(LLGI::ShaderStageType::Compute, shader.get());
+	VERIFY(pipeline->Compile());
+	auto output =
+		LLGI::CreateSharedPtr(graphics->CreateBuffer(LLGI::BufferUsageType::StorageWrite | LLGI::BufferUsageType::CopySrc, sizeof(float)));
+	auto readback =
+		LLGI::CreateSharedPtr(graphics->CreateBuffer(LLGI::BufferUsageType::MapRead | LLGI::BufferUsageType::CopyDst, sizeof(float)));
+
+	VERIFY(output && readback);
+	for (bool linearMips : {false, true})
+	{
+		auto commands = LLGI::CreateSharedPtr(linearMips ? web->CreateCommandList(nullptr, wgpu::MipmapFilterMode::Linear)
+														 : web->CreateCommandList(nullptr));
+		VERIFY(commands != nullptr);
+		for (auto filter : {LLGI::TextureMinMagFilter::Nearest, LLGI::TextureMinMagFilter::Linear})
+		{
+			commands->Begin();
+			commands->SetPipelineState(pipeline.get());
+			commands->SetTexture(texture.get(), LLGI::TextureWrapMode::Clamp, filter, 0);
+			commands->SetStorageBuffer(output.get(), sizeof(float), 1, LLGI::ShaderResourceAccess::ReadWrite);
+			commands->Dispatch(1, 1, 1, 1, 1, 1);
+			commands->CopyBuffer(output.get(), readback.get());
+			commands->End();
+			graphics->Execute(commands.get());
+			const float expected = linearMips && filter == LLGI::TextureMinMagFilter::Linear ? 0.25f : 0.0f;
+			auto* value = static_cast<const float*>(readback->Lock());
+			VERIFY(value && std::abs(*value - expected) < 0.01f);
+			readback->Unlock();
+		}
+	}
+}
+
+void test_webgpu_browser_external_submission(LLGI::DeviceType deviceType)
+{
+	LLGI::PlatformParameter pp;
+	pp.Device = deviceType;
+	auto platform = LLGI::CreateSharedPtr(LLGI::CreatePlatform(pp, nullptr));
+	VERIFY(platform != nullptr);
+	auto graphics = LLGI::CreateSharedPtr(platform->CreateGraphics());
+	VERIFY(graphics != nullptr);
+	auto* web = static_cast<LLGI::GraphicsWebGPU*>(graphics.get());
+	auto commands = LLGI::CreateSharedPtr(web->CreateCommandList(nullptr));
+	VERIFY(commands != nullptr);
+	commands->Begin();
+	commands->End();
+	web->Execute(commands.get());
+	commands->WaitUntilCompleted();
+	bool completed = false;
+	VERIFY(commands->TryGetCompleted(completed) && completed);
+
+	for (bool externalEncoder : {false, true})
+	{
+		wgpu::CommandBuffer buffer;
+		if (externalEncoder)
+		{
+			auto encoder = web->GetDevice().CreateCommandEncoder();
+			auto borrowed = encoder;
+			VERIFY(commands->BeginWithPlatform(borrowed.MoveToCHandle()));
+			commands->EndWithPlatform();
+			buffer = encoder.Finish();
+		}
+		else
+		{
+			commands->Begin();
+			commands->End();
+			buffer = static_cast<LLGI::CommandListWebGPU*>(commands.get())->GetCommandBuffer();
+		}
+		web->GetQueue().Submit(1, &buffer);
+		VERIFY(!commands->TryGetCompleted(completed) && !completed);
+		auto done = std::make_shared<std::atomic<bool>>(false);
+		web->GetQueue().OnSubmittedWorkDone(wgpu::CallbackMode::AllowSpontaneous,
+											[done](wgpu::QueueWorkDoneStatus status, wgpu::StringView)
+											{ done->store(status == wgpu::QueueWorkDoneStatus::Success); });
+		commands->WaitUntilCompleted();
+		VERIFY(done->load());
+	}
 }
 
 void test_webgpu_browser_compute_dispatch(LLGI::DeviceType deviceType)
@@ -506,6 +639,10 @@ void test_webgpu_browser_screen_presentation(LLGI::DeviceType deviceType)
 TestRegister WebGPUBrowser_OffscreenRender(
 	"WebGPUBrowser.OffscreenRender",
 	[](LLGI::DeviceType device) -> void { test_webgpu_browser_offscreen_render(device); });
+
+TestRegister WebGPUBrowser_MipFilter("WebGPUBrowser.MipFilter", test_webgpu_browser_mip_filter);
+
+TestRegister WebGPUBrowser_ExternalSubmission("WebGPUBrowser.ExternalSubmission", test_webgpu_browser_external_submission);
 
 TestRegister WebGPUBrowser_ComputeCompile(
 	"WebGPUBrowser.ComputeCompile",

@@ -30,8 +30,15 @@ public:
 
 	bool Compile() override;
 
-	wgpu::RenderPipeline GetRenderPipeline() { return renderPipeline_; }
+	const wgpu::RenderPipeline& GetRenderPipeline() { return renderPipeline_; }
 	wgpu::ComputePipeline GetComputePipeline() { return computePipeline_; }
+	wgpu::BindGroupLayout GetBindGroupLayout(uint32_t index) const
+	{
+		if (hasBindingReflection_)
+			return bindGroupLayouts_[index];
+		return computePipeline_ ? computePipeline_.GetBindGroupLayout(index) : renderPipeline_.GetBindGroupLayout(index);
+	}
+	bool HasBindingReflection() const { return hasBindingReflection_; }
 	bool HasBinding(uint32_t group, uint32_t binding) const;
 	bool HasBinding(uint32_t group, uint32_t binding, ShaderResourceType resourceType) const;
 	bool HasBinding(uint32_t group, uint32_t binding, ShaderResourceType resourceType, ShaderResourceAccess access) const;
