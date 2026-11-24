@@ -169,7 +169,7 @@ public:
 	}
 
 	/**
-		@brief specify textures
+		@brief Bind a texture. minmagFilter controls filtering within each mip level. Sampling between mip levels uses linear interpolation.
 	*/
 	virtual void SetTexture(Texture* texture, TextureWrapMode wrapMode, TextureMinMagFilter minmagFilter, int32_t unit);
 

@@ -245,7 +245,7 @@ D3D12_SAMPLER_DESC CommandListDX12::GeSamplerDescFromBindingTexture(const Comman
 
 	if (minMagFilter == TextureMinMagFilter::Nearest)
 	{
-		samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
+		samplerDesc.Filter = D3D12_FILTER_MIN_MAG_POINT_MIP_LINEAR;
 	}
 	else
 	{

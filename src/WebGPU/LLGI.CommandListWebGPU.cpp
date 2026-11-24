@@ -133,8 +133,7 @@ bool CommandListWebGPU::PrepareStandaloneCommand(const char* commandName)
 	return true;
 }
 
-CommandListWebGPU::CommandListWebGPU(wgpu::Device device, wgpu::MipmapFilterMode linearSamplerMipFilter)
-	: CommandList(RetainedRecordings), device_(device)
+CommandListWebGPU::CommandListWebGPU(wgpu::Device device) : CommandList(RetainedRecordings), device_(device)
 {
 	wgpu::TextureDescriptor fallbackTextureDesc{};
 	fallbackTextureDesc.usage = wgpu::TextureUsage::TextureBinding | wgpu::TextureUsage::CopyDst;
@@ -173,8 +172,7 @@ CommandListWebGPU::CommandListWebGPU(wgpu::Device device, wgpu::MipmapFilterMode
 
 			samplerDesc.magFilter = TextureFilterModes[f];
 			samplerDesc.minFilter = TextureFilterModes[f];
-			samplerDesc.mipmapFilter =
-				f == static_cast<int>(TextureMinMagFilter::Linear) ? linearSamplerMipFilter : wgpu::MipmapFilterMode::Nearest;
+			samplerDesc.mipmapFilter = wgpu::MipmapFilterMode::Linear;
 			samplerDesc.lodMinClamp = 0.0f;
 			samplerDesc.lodMaxClamp = 32.0f;
 			samplerDesc.maxAnisotropy = 1;

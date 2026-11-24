@@ -322,7 +322,6 @@ void test_webgpu_browser_mip_filter(LLGI::DeviceType deviceType)
 	VERIFY(platform != nullptr);
 	auto graphics = LLGI::CreateSharedPtr(platform->CreateGraphics());
 	VERIFY(graphics != nullptr);
-	auto* web = static_cast<LLGI::GraphicsWebGPU*>(graphics.get());
 
 	LLGI::TextureParameter desc;
 	desc.Size = {2, 2, 1};
@@ -334,6 +333,8 @@ void test_webgpu_browser_mip_filter(LLGI::DeviceType deviceType)
 	auto* pixels = static_cast<uint8_t*>(texture->Lock());
 	VERIFY(pixels != nullptr);
 	std::fill_n(pixels, 16, uint8_t{0});
+	// Level 0 has black and red columns. Level 1 is white.
+	pixels[4] = pixels[12] = 255;
 	std::fill_n(pixels + 16, 4, uint8_t{255});
 	texture->Unlock();
 
@@ -349,26 +350,23 @@ void test_webgpu_browser_mip_filter(LLGI::DeviceType deviceType)
 		LLGI::CreateSharedPtr(graphics->CreateBuffer(LLGI::BufferUsageType::MapRead | LLGI::BufferUsageType::CopyDst, sizeof(float)));
 
 	VERIFY(output && readback);
-	for (bool linearMips : {false, true})
+	auto commands = LLGI::CreateSharedPtr(graphics->CreateCommandList(nullptr));
+	VERIFY(commands != nullptr);
+	for (auto filter : {LLGI::TextureMinMagFilter::Nearest, LLGI::TextureMinMagFilter::Linear})
 	{
-		auto commands = LLGI::CreateSharedPtr(linearMips ? web->CreateCommandList(nullptr, wgpu::MipmapFilterMode::Linear)
-														 : web->CreateCommandList(nullptr));
-		VERIFY(commands != nullptr);
-		for (auto filter : {LLGI::TextureMinMagFilter::Nearest, LLGI::TextureMinMagFilter::Linear})
-		{
-			commands->Begin();
-			commands->SetPipelineState(pipeline.get());
-			commands->SetTexture(texture.get(), LLGI::TextureWrapMode::Clamp, filter, 0);
-			commands->SetStorageBuffer(output.get(), sizeof(float), 1, LLGI::ShaderResourceAccess::ReadWrite);
-			commands->Dispatch(1, 1, 1, 1, 1, 1);
-			commands->CopyBuffer(output.get(), readback.get());
-			commands->End();
-			graphics->Execute(commands.get());
-			const float expected = linearMips && filter == LLGI::TextureMinMagFilter::Linear ? 0.25f : 0.0f;
-			auto* value = static_cast<const float*>(readback->Lock());
-			VERIFY(value && std::abs(*value - expected) < 0.01f);
-			readback->Unlock();
-		}
+		commands->Begin();
+		commands->SetPipelineState(pipeline.get());
+		commands->SetTexture(texture.get(), LLGI::TextureWrapMode::Clamp, filter, 0);
+		commands->SetStorageBuffer(output.get(), sizeof(float), 1, LLGI::ShaderResourceAccess::ReadWrite);
+		commands->Dispatch(1, 1, 1, 1, 1, 1);
+		commands->CopyBuffer(output.get(), readback.get());
+		commands->End();
+		graphics->Execute(commands.get());
+		// At u=3/8, level 0 gives red 0 (nearest) or 1/4 (linear). LOD 1/4 mixes in 1/4 of level 1.
+		const float expected = filter == LLGI::TextureMinMagFilter::Nearest ? 0.25f : 0.4375f;
+		auto* value = static_cast<const float*>(readback->Lock());
+		VERIFY(value && std::abs(*value - expected) < 0.01f);
+		readback->Unlock();
 	}
 }
 

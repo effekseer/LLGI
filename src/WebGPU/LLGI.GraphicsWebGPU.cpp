@@ -194,15 +194,7 @@ SingleFrameMemoryPool* GraphicsWebGPU::CreateSingleFrameMemoryPool(int32_t const
 	return new SingleFrameMemoryPoolWebGPU(GetDevice(), 1);
 }
 
-CommandList* GraphicsWebGPU::CreateCommandList(SingleFrameMemoryPool* memoryPool)
-{
-	return CreateCommandList(memoryPool, wgpu::MipmapFilterMode::Nearest);
-}
-
-CommandList* GraphicsWebGPU::CreateCommandList(SingleFrameMemoryPool* memoryPool, wgpu::MipmapFilterMode linearSamplerMipFilter)
-{
-	return new CommandListWebGPU(GetDevice(), linearSamplerMipFilter);
-}
+CommandList* GraphicsWebGPU::CreateCommandList(SingleFrameMemoryPool* memoryPool) { return new CommandListWebGPU(GetDevice()); }
 
 RenderPass* GraphicsWebGPU::CreateRenderPass(Texture** textures, int32_t textureCount, Texture* depthTexture)
 {
