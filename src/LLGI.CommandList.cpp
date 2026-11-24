@@ -208,7 +208,7 @@ CommandList::~CommandList()
 	}
 }
 
-void CommandList::Begin()
+void CommandList::BeginRecording(bool withPlatform)
 {
 	bindingVertexBuffer.vertexBuffer = nullptr;
 	bindingIndexBuffer.indexBuffer = nullptr;
@@ -227,30 +227,15 @@ void CommandList::Begin()
 	}
 	swapObjects[swapIndex_].referencedObjects.clear();
 
+	doesBeginWithPlatform_ = withPlatform;
 	isInBegin_ = true;
 }
 
+void CommandList::Begin() { BeginRecording(false); }
+
 bool CommandList::BeginWithPlatform(void* platformContextPtr)
 {
-	bindingVertexBuffer.vertexBuffer = nullptr;
-	bindingIndexBuffer.indexBuffer = nullptr;
-	currentPipelineState = nullptr;
-	isVertexBufferDirtied = true;
-	isCurrentIndexBufferDirtied = true;
-	isPipelineDirtied = true;
-	ResetTextures();
-	ResetStorageBuffers();
-
-	swapIndex_ = (swapIndex_ + 1) % swapCount_;
-
-	for (auto& o : swapObjects[swapIndex_].referencedObjects)
-	{
-		o->Release();
-	}
-	swapObjects[swapIndex_].referencedObjects.clear();
-	doesBeginWithPlatform_ = true;
-
-	isInBegin_ = true;
+	BeginRecording(true);
 	return true;
 }
 
@@ -302,7 +287,8 @@ void CommandList::SetVertexBuffer(Buffer* vertexBuffer, int32_t stride, int32_t 
 
 void CommandList::SetIndexBuffer(Buffer* indexBuffer, int32_t stride, int32_t offset)
 {
-	isCurrentIndexBufferDirtied |= bindingIndexBuffer.indexBuffer != indexBuffer || bindingIndexBuffer.offset != offset;
+	isCurrentIndexBufferDirtied |=
+		bindingIndexBuffer.indexBuffer != indexBuffer || bindingIndexBuffer.stride != stride || bindingIndexBuffer.offset != offset;
 	bindingIndexBuffer.indexBuffer = indexBuffer;
 	bindingIndexBuffer.stride = stride;
 	bindingIndexBuffer.offset = offset;
@@ -370,6 +356,12 @@ void CommandList::SetTexture(Texture* texture, TextureWrapMode wrapMode, Texture
 	const int slotMax = texture != nullptr && BitwiseContains(texture->GetUsage(), TextureUsageType::Storage)
 							? StorageTextureSlotMax
 							: NumTexture;
+	SetTextureBinding(texture, wrapMode, minmagFilter, unit, slotMax);
+}
+
+void CommandList::SetTextureBinding(
+	Texture* texture, TextureWrapMode wrapMode, TextureMinMagFilter minmagFilter, int32_t unit, int32_t slotMax)
+{
 	if (unit < 0 || unit >= slotMax)
 	{
 		Log(LogType::Error,

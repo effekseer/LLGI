@@ -66,6 +66,8 @@ endif()
 
 if(BUILD_WEBGPU_BROWSER_TEST)
   set_target_properties(LLGI_Test PROPERTIES SUFFIX ".html")
+  set_property(TARGET LLGI_Test APPEND PROPERTY LINK_DEPENDS
+               "${CMAKE_CURRENT_SOURCE_DIR}/browser/pre_webgpu_test.js")
   target_link_options(
     LLGI_Test
     PRIVATE

@@ -59,64 +59,35 @@ wgpu::PrimitiveTopology Convert(TopologyType type)
 	throw "Not implemented";
 }
 
-wgpu::CompareFunction Convert(CompareFuncType type)
+namespace
 {
-	if (type == CompareFuncType::Always)
-		return wgpu::CompareFunction::Always;
-
-	if (type == CompareFuncType::Equal)
-		return wgpu::CompareFunction::Equal;
-
-	if (type == CompareFuncType::Greater)
-		return wgpu::CompareFunction::Greater;
-
-	if (type == CompareFuncType::GreaterEqual)
-		return wgpu::CompareFunction::GreaterEqual;
-
-	if (type == CompareFuncType::Less)
-		return wgpu::CompareFunction::Less;
-
-	if (type == CompareFuncType::LessEqual)
-		return wgpu::CompareFunction::LessEqual;
-
-	if (type == CompareFuncType::Never)
+template <typename Compare> wgpu::CompareFunction ConvertComparison(Compare type)
+{
+	switch (type)
+	{
+	case Compare::Never:
 		return wgpu::CompareFunction::Never;
-
-	if (type == CompareFuncType::NotEqual)
+	case Compare::Less:
+		return wgpu::CompareFunction::Less;
+	case Compare::Equal:
+		return wgpu::CompareFunction::Equal;
+	case Compare::LessEqual:
+		return wgpu::CompareFunction::LessEqual;
+	case Compare::Greater:
+		return wgpu::CompareFunction::Greater;
+	case Compare::NotEqual:
 		return wgpu::CompareFunction::NotEqual;
-
+	case Compare::GreaterEqual:
+		return wgpu::CompareFunction::GreaterEqual;
+	case Compare::Always:
+		return wgpu::CompareFunction::Always;
+	}
 	throw "Not implemented";
 }
+} // namespace
 
-wgpu::CompareFunction Convert(DepthFuncType type)
-{
-	if (type == DepthFuncType::Always)
-		return wgpu::CompareFunction::Always;
-
-	if (type == DepthFuncType::Equal)
-		return wgpu::CompareFunction::Equal;
-
-	if (type == DepthFuncType::Greater)
-		return wgpu::CompareFunction::Greater;
-
-	if (type == DepthFuncType::GreaterEqual)
-		return wgpu::CompareFunction::GreaterEqual;
-
-	if (type == DepthFuncType::Less)
-		return wgpu::CompareFunction::Less;
-
-	if (type == DepthFuncType::LessEqual)
-		return wgpu::CompareFunction::LessEqual;
-
-	if (type == DepthFuncType::Never)
-		return wgpu::CompareFunction::Never;
-
-	if (type == DepthFuncType::NotEqual)
-		return wgpu::CompareFunction::NotEqual;
-
-	throw "Not implemented";
-}
-
+wgpu::CompareFunction Convert(CompareFuncType type) { return ConvertComparison(type); }
+wgpu::CompareFunction Convert(DepthFuncType type) { return ConvertComparison(type); }
 
 wgpu::CullMode Convert(CullingMode mode)
 {
@@ -152,6 +123,9 @@ wgpu::VertexFormat Convert(VertexLayoutFormat format)
 	if (format == VertexLayoutFormat::R8G8B8A8_UINT)
 		return wgpu::VertexFormat::Uint8x4;
 
+	if (format == VertexLayoutFormat::R16G16_UNORM)
+		return wgpu::VertexFormat::Unorm16x2;
+
 	throw "Not implemented";
 }
 
@@ -184,140 +158,61 @@ wgpu::StencilOperation Convert(StencilOperatorType type)
 	throw "Not implemented";
 }
 
+namespace
+{
+constexpr std::pair<TextureFormatType, wgpu::TextureFormat> TextureFormats[] = {
+	{TextureFormatType::R8G8B8A8_UNORM, wgpu::TextureFormat::RGBA8Unorm},
+	{TextureFormatType::B8G8R8A8_UNORM, wgpu::TextureFormat::BGRA8Unorm},
+	{TextureFormatType::RG11B10_UFLOAT, wgpu::TextureFormat::RG11B10Ufloat},
+	{TextureFormatType::R16G16B16A16_FLOAT, wgpu::TextureFormat::RGBA16Float},
+	{TextureFormatType::R32G32B32A32_FLOAT, wgpu::TextureFormat::RGBA32Float},
+	{TextureFormatType::R8G8B8A8_UNORM_SRGB, wgpu::TextureFormat::RGBA8UnormSrgb},
+	{TextureFormatType::B8G8R8A8_UNORM_SRGB, wgpu::TextureFormat::BGRA8UnormSrgb},
+	{TextureFormatType::R16_FLOAT, wgpu::TextureFormat::R16Float},
+	{TextureFormatType::R32_FLOAT, wgpu::TextureFormat::R32Float},
+	{TextureFormatType::R32G32_FLOAT, wgpu::TextureFormat::RG32Float},
+	{TextureFormatType::R16G16_FLOAT, wgpu::TextureFormat::RG16Float},
+	{TextureFormatType::R8_UNORM, wgpu::TextureFormat::R8Unorm},
+	{TextureFormatType::BC1, wgpu::TextureFormat::BC1RGBAUnorm},
+	{TextureFormatType::BC2, wgpu::TextureFormat::BC2RGBAUnorm},
+	{TextureFormatType::BC3, wgpu::TextureFormat::BC3RGBAUnorm},
+	{TextureFormatType::BC7, wgpu::TextureFormat::BC7RGBAUnorm},
+	{TextureFormatType::BC1_SRGB, wgpu::TextureFormat::BC1RGBAUnormSrgb},
+	{TextureFormatType::BC2_SRGB, wgpu::TextureFormat::BC2RGBAUnormSrgb},
+	{TextureFormatType::BC3_SRGB, wgpu::TextureFormat::BC3RGBAUnormSrgb},
+	{TextureFormatType::BC7_SRGB, wgpu::TextureFormat::BC7RGBAUnormSrgb},
+	{TextureFormatType::D32, wgpu::TextureFormat::Depth32Float},
+	{TextureFormatType::D24S8, wgpu::TextureFormat::Depth24PlusStencil8},
+	{TextureFormatType::D32S8, wgpu::TextureFormat::Depth32FloatStencil8},
+	{TextureFormatType::Unknown, wgpu::TextureFormat::Undefined},
+};
+} // namespace
+
 wgpu::TextureFormat ConvertFormat(TextureFormatType format)
 {
-	if (format == TextureFormatType::R8G8B8A8_UNORM)
-		return wgpu::TextureFormat::RGBA8Unorm;
-
-	if (format == TextureFormatType::B8G8R8A8_UNORM)
-		return wgpu::TextureFormat::BGRA8Unorm;
-
-	if (format == TextureFormatType::RG11B10_UFLOAT)
-		return wgpu::TextureFormat::RG11B10Ufloat;
-
-	if (format == TextureFormatType::R16G16B16A16_FLOAT)
-		return wgpu::TextureFormat::RGBA16Float;
-
-	if (format == TextureFormatType::R32G32B32A32_FLOAT)
-		return wgpu::TextureFormat::RGBA32Float;
-
-	if (format == TextureFormatType::R8G8B8A8_UNORM_SRGB)
-		return wgpu::TextureFormat::RGBA8UnormSrgb;
-
-	if (format == TextureFormatType::B8G8R8A8_UNORM_SRGB)
-		return wgpu::TextureFormat::BGRA8UnormSrgb;
-
-	if (format == TextureFormatType::R16G16_FLOAT)
-		return wgpu::TextureFormat::RG16Float;
-
-	if (format == TextureFormatType::R8_UNORM)
-		return wgpu::TextureFormat::R8Unorm;
-
-	if (format == TextureFormatType::BC1)
-		return wgpu::TextureFormat::BC1RGBAUnorm;
-
-	if (format == TextureFormatType::BC2)
-		return wgpu::TextureFormat::BC2RGBAUnorm;
-
-	if (format == TextureFormatType::BC3)
-		return wgpu::TextureFormat::BC3RGBAUnorm;
-
-	if (format == TextureFormatType::BC7)
-		return wgpu::TextureFormat::BC7RGBAUnorm;
-
-	if (format == TextureFormatType::BC1_SRGB)
-		return wgpu::TextureFormat::BC1RGBAUnormSrgb;
-
-	if (format == TextureFormatType::BC2_SRGB)
-		return wgpu::TextureFormat::BC2RGBAUnormSrgb;
-
-	if (format == TextureFormatType::BC3_SRGB)
-		return wgpu::TextureFormat::BC3RGBAUnormSrgb;
-
-	if (format == TextureFormatType::BC7_SRGB)
-		return wgpu::TextureFormat::BC7RGBAUnormSrgb;
-
-	if (format == TextureFormatType::D32)
-		return wgpu::TextureFormat::Depth32Float;
-
-	if (format == TextureFormatType::D24S8)
-		return wgpu::TextureFormat::Depth24PlusStencil8;
-
-	if (format == TextureFormatType::D32S8)
-		return wgpu::TextureFormat::Depth32FloatStencil8;
-
-	if (format == TextureFormatType::Unknown)
-		return wgpu::TextureFormat::Undefined;
-
+	for (const auto& [llgi, webgpu] : TextureFormats)
+		if (llgi == format)
+			return webgpu;
 	throw "Not implemented";
 }
 
 TextureFormatType ConvertFormat(wgpu::TextureFormat format)
 {
-	if (format == wgpu::TextureFormat::RGBA8Unorm)
-		return TextureFormatType::R8G8B8A8_UNORM;
-
-	if (format == wgpu::TextureFormat::BGRA8Unorm)
-		return TextureFormatType::B8G8R8A8_UNORM;
-
-	if (format == wgpu::TextureFormat::RG11B10Ufloat)
-		return TextureFormatType::RG11B10_UFLOAT;
-
-	if (format == wgpu::TextureFormat::RGBA16Float)
-		return TextureFormatType::R16G16B16A16_FLOAT;
-
-	if (format == wgpu::TextureFormat::RGBA32Float)
-		return TextureFormatType::R32G32B32A32_FLOAT;
-
-	if (format == wgpu::TextureFormat::RGBA8UnormSrgb)
-		return TextureFormatType::R8G8B8A8_UNORM_SRGB;
-
-	if (format == wgpu::TextureFormat::BGRA8UnormSrgb)
-		return TextureFormatType::B8G8R8A8_UNORM_SRGB;
-
-	if (format == wgpu::TextureFormat::RG16Float)
-		return TextureFormatType::R16G16_FLOAT;
-
-	if (format == wgpu::TextureFormat::R8Unorm)
-		return TextureFormatType::R8_UNORM;
-
-	if (format == wgpu::TextureFormat::BC1RGBAUnorm)
-		return TextureFormatType::BC1;
-
-	if (format == wgpu::TextureFormat::BC2RGBAUnorm)
-		return TextureFormatType::BC2;
-
-	if (format == wgpu::TextureFormat::BC3RGBAUnorm)
-		return TextureFormatType::BC3;
-
-	if (format == wgpu::TextureFormat::BC7RGBAUnorm)
-		return TextureFormatType::BC7;
-
-	if (format == wgpu::TextureFormat::BC1RGBAUnormSrgb)
-		return TextureFormatType::BC1_SRGB;
-
-	if (format == wgpu::TextureFormat::BC2RGBAUnormSrgb)
-		return TextureFormatType::BC2_SRGB;
-
-	if (format == wgpu::TextureFormat::BC3RGBAUnormSrgb)
-		return TextureFormatType::BC3_SRGB;
-
-	if (format == wgpu::TextureFormat::BC7RGBAUnormSrgb)
-		return TextureFormatType::BC7_SRGB;
-
-	if (format == wgpu::TextureFormat::Depth32Float)
-		return TextureFormatType::D32;
-
-	if (format == wgpu::TextureFormat::Depth24PlusStencil8)
-		return TextureFormatType::D24S8;
-
-	if (format == wgpu::TextureFormat::Depth32FloatStencil8)
-		return TextureFormatType::D32S8;
-
-	if (format == wgpu::TextureFormat::Undefined)
-		return TextureFormatType::Unknown;
-
+	for (const auto& [llgi, webgpu] : TextureFormats)
+		if (webgpu == format)
+			return llgi;
 	throw "Not implemented";
+}
+
+wgpu::Extent3D GetTextureCopyExtent(TextureFormatType format, Vec3I size)
+{
+	// Copies of compressed tail mips cover whole blocks, even when the logical mip is smaller.
+	if (IsBlockCompressedFormat(format))
+	{
+		size.X = (size.X + 3) / 4 * 4;
+		size.Y = (size.Y + 3) / 4 * 4;
+	}
+	return {static_cast<uint32_t>(size.X), static_cast<uint32_t>(size.Y), static_cast<uint32_t>(size.Z)};
 }
 
 int32_t GetSize(VertexLayoutFormat format)
@@ -338,13 +233,10 @@ int32_t GetSize(VertexLayoutFormat format)
 	{
 		return sizeof(float) * 2;
 	}
-	else if (format == VertexLayoutFormat::R8G8B8A8_UINT)
+	else if (format == VertexLayoutFormat::R8G8B8A8_UINT || format == VertexLayoutFormat::R8G8B8A8_UNORM ||
+			 format == VertexLayoutFormat::R16G16_UNORM)
 	{
-		return sizeof(float);
-	}
-	else if (format == VertexLayoutFormat::R8G8B8A8_UNORM)
-	{
-		return sizeof(float);
+		return 4;
 	}
 	else
 	{

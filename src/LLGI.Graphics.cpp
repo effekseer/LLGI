@@ -224,32 +224,32 @@ Buffer* SingleFrameMemoryPool::CreateConstantBuffer(int32_t size)
 {
 	assert(currentSwapBuffer_ >= 0);
 
-	if (static_cast<int32_t>(buffers_[currentSwapBuffer_].size()) <= offsets_[currentSwapBuffer_])
+	auto& buffers = buffers_[currentSwapBuffer_];
+	auto& offset = offsets_[currentSwapBuffer_];
+	Buffer* buffer;
+	if (offset == static_cast<int32_t>(buffers.size()))
 	{
-		auto cb = CreateBufferInternal(size);
-		if (cb == nullptr)
-		{
+		buffer = CreateBufferInternal(size);
+		if (buffer == nullptr)
 			return nullptr;
-		}
-
-		buffers_[currentSwapBuffer_].push_back(cb);
-		SafeAddRef(cb);
-		offsets_[currentSwapBuffer_]++;
-		return cb;
+		buffers.push_back(buffer);
 	}
 	else
 	{
-		auto cb = buffers_[currentSwapBuffer_][offsets_[currentSwapBuffer_]];
-		auto newCb = ReinitializeBuffer(cb, size);
-		if (newCb == nullptr)
-		{
+		auto& slot = buffers[offset];
+		buffer = ReinitializeBuffer(slot, size);
+		if (buffer == nullptr)
 			return nullptr;
+		if (buffer != slot)
+		{
+			slot->Release();
+			slot = buffer;
 		}
-
-		SafeAddRef(newCb);
-		offsets_[currentSwapBuffer_]++;
-		return newCb;
 	}
+
+	buffer->AddRef();
+	++offset;
+	return buffer;
 }
 
 bool RenderPass::assignRenderTextures(Texture** textures, int32_t count)
