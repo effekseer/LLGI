@@ -54,8 +54,6 @@ public:
 	SingleFrameMemoryPool* CreateSingleFrameMemoryPool(int32_t constantBufferPoolSize, int32_t drawingCount) override;
 
 	CommandList* CreateCommandList(SingleFrameMemoryPool* memoryPool) override;
-	// Nearest samplers always select a single mip. The standard overload also selects a single mip for linear samplers.
-	CommandList* CreateCommandList(SingleFrameMemoryPool* memoryPool, wgpu::MipmapFilterMode linearSamplerMipFilter);
 
 	RenderPass* CreateRenderPass(Texture** textures, int32_t textureCount, Texture* depthTexture) override;
 

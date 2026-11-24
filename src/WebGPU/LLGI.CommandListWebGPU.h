@@ -68,7 +68,7 @@ class CommandListWebGPU : public CommandList
 	bool PrepareStandaloneCommand(const char* commandName);
 
 public:
-	CommandListWebGPU(wgpu::Device device, wgpu::MipmapFilterMode linearSamplerMipFilter = wgpu::MipmapFilterMode::Nearest);
+	explicit CommandListWebGPU(wgpu::Device device);
 
 	void Begin() override;
 
