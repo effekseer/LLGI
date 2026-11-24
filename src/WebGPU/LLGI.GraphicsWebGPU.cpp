@@ -196,10 +196,12 @@ SingleFrameMemoryPool* GraphicsWebGPU::CreateSingleFrameMemoryPool(int32_t const
 
 CommandList* GraphicsWebGPU::CreateCommandList(SingleFrameMemoryPool* memoryPool)
 {
-	auto commandList = new CommandListWebGPU(GetDevice());
+	return CreateCommandList(memoryPool, wgpu::MipmapFilterMode::Nearest);
+}
 
-	// TODO : error check
-	return commandList;
+CommandList* GraphicsWebGPU::CreateCommandList(SingleFrameMemoryPool* memoryPool, wgpu::MipmapFilterMode linearSamplerMipFilter)
+{
+	return new CommandListWebGPU(GetDevice(), linearSamplerMipFilter);
 }
 
 RenderPass* GraphicsWebGPU::CreateRenderPass(Texture** textures, int32_t textureCount, Texture* depthTexture)

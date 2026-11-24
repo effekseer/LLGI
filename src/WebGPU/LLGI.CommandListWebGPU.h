@@ -9,26 +9,34 @@
 namespace LLGI
 {
 
+class PipelineStateWebGPU;
+
 class CommandListWebGPU : public CommandList
 {
-	struct BindGroupEntryKey
-	{
-		uint32_t binding = 0;
-		const void* resource = nullptr;
-		uint64_t offset = 0;
-		uint64_t size = 0;
-		int32_t wrapMode = 0;
-		int32_t minMagFilter = 0;
-	};
-
 	struct BindGroupCache
 	{
-		const void* pipeline = nullptr;
-		std::vector<BindGroupEntryKey> entries;
-		wgpu::BindGroup bindGroup = nullptr;
+		wgpu::BindGroupLayout layout;
+		std::vector<wgpu::BindGroupEntry> entries;
+		wgpu::BindGroup bindGroup;
+		uint32_t lastRecording = 0;
+		bool Matches(const wgpu::BindGroupDescriptor& desc) const;
 	};
 
-	std::shared_ptr<std::atomic<int>> completion_;
+	struct BindGroupBucket
+	{
+		std::vector<BindGroupCache> caches;
+		size_t next = 0;
+	};
+
+	enum class SubmissionStatus
+	{
+		Pending,
+		Completed,
+		Failed
+	};
+	using Completion = std::shared_ptr<std::atomic<SubmissionStatus>>;
+	Completion completion_;
+	Completion ObserveQueueCompletion() const;
 	wgpu::Device device_;
 	wgpu::CommandBuffer commandBuffer_;
 	wgpu::CommandEncoder commandEncorder_;
@@ -37,20 +45,30 @@ class CommandListWebGPU : public CommandList
 	wgpu::Sampler samplers_[3][2];
 	wgpu::Texture fallbackTexture_;
 	wgpu::TextureView fallbackTextureView_;
-	std::array<BindGroupCache, 3> renderBindGroupCaches_;
-	std::array<BindGroupCache, 3> computeBindGroupCaches_;
+	std::array<BindGroupBucket, 128> bindGroupBuckets_;
+	static constexpr uint32_t RetainedRecordings = 3;
+	uint32_t recording_ = 0;
+	std::array<std::vector<wgpu::BindGroupEntry>, 3> bindGroupEntries_;
 
-	static bool Equals(const std::vector<BindGroupEntryKey>& lhs, const std::vector<BindGroupEntryKey>& rhs);
-	void ResetRenderBindGroupCaches();
-	void ResetComputeBindGroupCaches();
-	void SetRenderBindGroup(
-		uint32_t index, const void* pipeline, const std::vector<BindGroupEntryKey>& entries, const wgpu::BindGroupDescriptor& desc);
-	void SetComputeBindGroup(
-		uint32_t index, const void* pipeline, const std::vector<BindGroupEntryKey>& entries, const wgpu::BindGroupDescriptor& desc);
+	// Only cache encoder state while LLGI has exclusive control of the render pass.
+	bool exclusivePass_ = false;
+	wgpu::RenderPipeline boundPipeline_;
+	int stencilReference_ = -1;
+	std::array<wgpu::BindGroup, 3> boundGroups_;
+	void ResetRenderState(bool exclusive);
+	enum class PassType
+	{
+		Render,
+		Compute
+	};
+	void BindResources(PipelineStateWebGPU& pipeline, PassType pass);
+	void ClearBindGroupEntries();
+	void FinishRecording();
+	wgpu::BindGroup GetBindGroup(const wgpu::BindGroupDescriptor& desc);
 	bool PrepareStandaloneCommand(const char* commandName);
 
 public:
-	CommandListWebGPU(wgpu::Device device);
+	CommandListWebGPU(wgpu::Device device, wgpu::MipmapFilterMode linearSamplerMipFilter = wgpu::MipmapFilterMode::Nearest);
 
 	void Begin() override;
 
@@ -66,6 +84,7 @@ public:
 	void EndRenderPass() override;
 
 	bool BeginRenderPassWithPlatformPtr(void* platformPtr) override;
+	bool BeginRenderPassWithPlatformPtr(void* platformPtr, bool exclusive);
 
 	bool EndRenderPassWithPlatformPtr() override;
 
@@ -88,8 +107,10 @@ public:
 
 	void CopyBuffer(Buffer* src, Buffer* dst) override;
 
+	// With no tracked submission, wait for the device queue through this call (including externally submitted work).
 	void WaitUntilCompleted() override;
 	bool TryGetCompleted(bool& completed) const override;
+	// Call immediately after a host submission to enable nonblocking completion queries.
 	void TrackSubmission();
 
 	const wgpu::CommandBuffer& GetCommandBuffer() const { return commandBuffer_; }

@@ -184,18 +184,26 @@ bool PipelineStateWebGPU::HasBinding(uint32_t group, uint32_t binding, ShaderRes
 
 bool PipelineStateWebGPU::Compile()
 {
-	if (!ValidateVertexLayout()) return false;
+	const auto computeShader = static_cast<ShaderWebGPU*>(shaders_[static_cast<int>(ShaderStageType::Compute)]);
+	if (!computeShader && !ValidateVertexLayout())
+		return false;
+	renderPipeline_ = nullptr;
+	computePipeline_ = nullptr;
+	pipelineLayout_ = nullptr;
+	bindGroupLayouts_ = {};
 	bindings_.clear();
-	hasBindingReflection_ = false;
+	hasBindingReflection_ = true;
 	for (auto shader : shaders_)
 	{
-		auto shaderWebGPU = static_cast<ShaderWebGPU*>(shader);
-		if (shaderWebGPU == nullptr || !shaderWebGPU->HasBindingReflection())
-		{
+		if (!shader || (computeShader && shader != computeShader))
 			continue;
+		const auto* shaderWebGPU = static_cast<ShaderWebGPU*>(shader);
+		if (!shaderWebGPU->HasBindingReflection())
+		{
+			// An explicit layout must cover all active stages, including mixed WGSL and SPIR-V pipelines.
+			hasBindingReflection_ = false;
+			break;
 		}
-
-		hasBindingReflection_ = true;
 		for (const auto& reflectedBinding : shaderWebGPU->GetBindings())
 		{
 			if (!ContainsBinding(bindings_, reflectedBinding))
@@ -206,7 +214,6 @@ bool PipelineStateWebGPU::Compile()
 	}
 
 	const char* entryPointName = "main";
-	auto computeShader = static_cast<ShaderWebGPU*>(shaders_[static_cast<int>(ShaderStageType::Compute)]);
 	if (computeShader != nullptr)
 	{
 		wgpu::ComputePipelineDescriptor desc{};
